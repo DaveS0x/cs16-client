@@ -571,6 +571,7 @@ public:
 	int Draw(float flTime);
 	CHudMsgFunc(Battery);
 	CHudMsgFunc(ArmorType);
+	inline int GetArmorValue() const { return m_iBat; }
 	
 private:
 	enum armortype_t {
@@ -741,6 +742,7 @@ public:
 	int Draw( float flTime );
 	CHudMsgFunc(Money);
 	CHudMsgFunc(BlinkAcct);
+	inline int GetMoneyValue() const { return m_iMoneyCount; }
 
 private:
 	int m_iMoneyCount;
@@ -785,6 +787,8 @@ public:
 	// show the timer
 	// [empty]
 	CHudMsgFunc(ShowTimer);
+	inline int GetBaseRoundTimeSec() const { return m_iTime; }
+	inline float GetRoundStartTimeSec() const { return m_fStartTime; }
 
 	int m_right;
 private:
