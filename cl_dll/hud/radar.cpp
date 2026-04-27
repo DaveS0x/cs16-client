@@ -33,6 +33,7 @@ version.
 #include "draw_util.h"
 #include "triangleapi.h"
 #include "vgui_parser.h"
+#include "js_hud_exports.h"
 #ifndef M_PI
 #define M_PI		3.14159265358979323846	// matches value in gcc v2 math.h
 #endif
@@ -208,9 +209,18 @@ int CHudRadar::MsgFunc_Radar(const char *pszName,  int iSize, void *pbuf )
 	BufferReader reader( pszName, pbuf, iSize );
 
 	int index = reader.ReadByte();
+	if( index <= 0 || index > MAX_PLAYERS )
+		return 1;
+
 	g_PlayerExtraInfo[index].origin.x = reader.ReadCoord();
 	g_PlayerExtraInfo[index].origin.y = reader.ReadCoord();
 	g_PlayerExtraInfo[index].origin.z = reader.ReadCoord();
+	JS_HUD_RecordRadarPosition(
+		index,
+		g_PlayerExtraInfo[index].origin.x,
+		g_PlayerExtraInfo[index].origin.y,
+		g_PlayerExtraInfo[index].origin.z
+	);
 	return 1;
 }
 

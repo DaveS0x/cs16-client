@@ -28,6 +28,7 @@
 #include "vgui_parser.h"
 #include "ctype.h"
 #include "draw_util.h"
+#include "js_hud_exports.h"
 
 int CHudTextMessage::Init(void)
 {
@@ -187,7 +188,8 @@ int CHudTextMessage::MsgFunc_TextMsg( const char *pszName, int iSize, void *pbuf
 	int clientIdx = -1;
 
 	static char szBuf[6][MAX_TEXTMSG_STRING];
-	char *msg_text = LookupString( reader.ReadString(), &msg_dest );
+	char *raw_msg_text = reader.ReadString();
+	char *msg_text = LookupString( raw_msg_text, &msg_dest );
 	msg_text = strncpy( szBuf[0], msg_text, MAX_TEXTMSG_STRING );
 	szBuf[0][MAX_TEXTMSG_STRING - 1] = 0;
 
@@ -215,6 +217,7 @@ int CHudTextMessage::MsgFunc_TextMsg( const char *pszName, int iSize, void *pbuf
 		snprintf( psz, MAX_TEXTMSG_STRING, msg_text, szBuf[1], szBuf[2], szBuf[3], szBuf[4] );
 
 		ConvertCRtoNL( psz );
+		JS_HUD_RecordRoundTextEvent( msg_dest, raw_msg_text, psz );
 
 		int len = DrawUtils::ConsoleStringLen( psz );
 

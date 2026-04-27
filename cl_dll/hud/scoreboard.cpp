@@ -24,6 +24,7 @@
 #include "triangleapi.h"
 #include "com_weapons.h"
 #include "cdll_dll.h"
+#include "js_hud_exports.h"
 
 #include <string.h>
 #include <stdio.h>
@@ -127,6 +128,7 @@ int CHudScoreboard :: VidInit( void )
 void CHudScoreboard :: InitHUDData( void )
 {
 	memset( g_PlayerExtraInfo, 0, sizeof g_PlayerExtraInfo );
+	JS_HUD_ResetRosterMirror();
 	m_iLastKilledBy = 0;
 	m_fLastKillTime = 0;
 	m_iPlayerNum = 0;
@@ -554,6 +556,7 @@ int CHudScoreboard :: MsgFunc_ScoreInfo( const char *pszName, int iSize, void *p
 		g_PlayerExtraInfo[cl].deaths = deaths;
 		g_PlayerExtraInfo[cl].playerclass = playerclass;
 		g_PlayerExtraInfo[cl].teamnumber = teamnumber;
+		JS_HUD_RecordScoreInfo( cl, frags, deaths, playerclass, teamnumber );
 
 		//gViewPort->UpdateOnPlayerInfo();
 	}
@@ -592,6 +595,7 @@ int CHudScoreboard :: MsgFunc_TeamInfo( const char *pszName, int iSize, void *pb
 
 		strncpy( g_PlayerExtraInfo[cl].teamname, teamName, MAX_TEAM_NAME );
 		g_PlayerExtraInfo[cl].teamnumber = teamNumber;
+		JS_HUD_RecordTeamInfo( cl, teamName, teamNumber );
 	}
 
 	// rebuild the list of teams

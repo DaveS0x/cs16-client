@@ -18,6 +18,7 @@
 #include "hud.h"
 #include "cl_util.h"
 #include "parsemsg.h"
+#include "js_hud_exports.h"
 
 #include <string.h>
 #include <stdio.h>
@@ -61,6 +62,7 @@ int CHudDeathNotice :: Init( void )
 void CHudDeathNotice :: InitHUDData( void )
 {
 	memset( rgDeathNoticeList, 0, sizeof(rgDeathNoticeList) );
+	JS_HUD_ResetEvents();
 }
 
 
@@ -168,7 +170,9 @@ int CHudDeathNotice :: MsgFunc_DeathMsg( const char *pszName, int iSize, void *p
 
 	char killedwith[32];
 	strncpy( killedwith, "d_", sizeof(killedwith) );
-	strncat( killedwith, reader.ReadString(), sizeof( killedwith ) - 2 );
+	const char *weaponName = reader.ReadString();
+	strncat( killedwith, weaponName, sizeof( killedwith ) - 2 );
+	JS_HUD_RecordKillEvent( killer, victim, headshot, weaponName );
 
 	//if (gViewPort)
 	//	gViewPort->DeathMsg( killer, victim );
@@ -303,7 +307,6 @@ int CHudDeathNotice :: MsgFunc_DeathMsg( const char *pszName, int iSize, void *p
 
 	return 1;
 }
-
 
 
 
