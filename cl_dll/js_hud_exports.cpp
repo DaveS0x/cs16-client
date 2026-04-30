@@ -831,8 +831,8 @@ extern "C" int DLLEXPORT JS_HUD_GetEventInt( int slot, int field )
 		return event.assister_team;
 	case JS_HUD_EVENT_INT_HEADSHOT:
 		return event.headshot;
-	case JS_HUD_EVENT_INT_RESERVED:
-		return event.reserved;
+	case JS_HUD_EVENT_INT_RARITY_FLAGS:
+		return event.rarity_flags;
 	default:
 		return 0;
 	}
@@ -923,7 +923,7 @@ extern "C" void DLLEXPORT JS_HUD_RecordRadarPosition( int player, float x, float
 	g_RadarCount++;
 }
 
-extern "C" void DLLEXPORT JS_HUD_RecordKillEvent( int killer, int victim, int headshot, const char *weapon, int assister )
+extern "C" void DLLEXPORT JS_HUD_RecordKillEvent( int killer, int victim, int headshot, const char *weapon, int assister, int rarityFlags )
 {
 	g_DeathMsgCount++;
 	JS_HUD_EventV1 *event = PushEvent( JS_HUD_EVENT_KILL );
@@ -934,6 +934,7 @@ extern "C" void DLLEXPORT JS_HUD_RecordKillEvent( int killer, int victim, int he
 	event->assister_id = assister;
 	event->assister_team = NormalizeMirrorPlayerTeam( assister );
 	event->headshot = headshot ? 1 : 0;
+	event->rarity_flags = rarityFlags;
 	event->state = JS_HUD_ROUND_UNKNOWN;
 	CopyFixedString( event->weapon, sizeof(event->weapon), weapon && weapon[0] ? weapon : "world" );
 	CopyFixedString( event->killer_name, sizeof(event->killer_name), PlayerNameOrFallback( killer, killer > 0 ? "Player" : "World" ) );
@@ -951,7 +952,6 @@ extern "C" void DLLEXPORT JS_HUD_RecordRoundTextEvent( int msg_dest, const char 
 	JS_HUD_EventV1 *event = PushEvent( JS_HUD_EVENT_ROUND );
 	event->state = state;
 	snprintf( event->text, sizeof(event->text), "%s", resolved_text && resolved_text[0] ? resolved_text : ( raw_text ? raw_text : "" ) );
-	event->reserved = msg_dest;
 }
 
 extern "C" uint32_t DLLEXPORT JS_HUD_GetDebugCountersSize( void )

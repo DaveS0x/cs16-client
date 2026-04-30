@@ -181,6 +181,7 @@ int CHudDeathNotice :: MsgFunc_DeathMsg( const char *pszName, int iSize, void *p
 	strncat( killedwith, weaponName, sizeof( killedwith ) - 2 );
 
 	int assister = 0;
+	int rarityFlags = 0;
 	if ( reader.Valid() )
 	{
 		const int deathMessageFlags = reader.ReadLong();
@@ -197,11 +198,11 @@ int CHudDeathNotice :: MsgFunc_DeathMsg( const char *pszName, int iSize, void *p
 				assister = reader.ReadByte();
 
 			if ( !reader.Bad() && ( deathMessageFlags & PLAYERDEATH_KILLRARITY ) )
-				reader.ReadLong();
+				rarityFlags = reader.ReadLong();
 		}
 	}
 
-	JS_HUD_RecordKillEvent( killer, victim, headshot, weaponName, assister );
+	JS_HUD_RecordKillEvent( killer, victim, headshot, weaponName, assister, rarityFlags );
 
 	//if (gViewPort)
 	//	gViewPort->DeathMsg( killer, victim );
@@ -336,5 +337,4 @@ int CHudDeathNotice :: MsgFunc_DeathMsg( const char *pszName, int iSize, void *p
 
 	return 1;
 }
-
 

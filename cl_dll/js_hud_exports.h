@@ -128,7 +128,7 @@ typedef struct JS_HUD_EventV1
 	char assister_name[JS_HUD_PLAYER_NAME_BYTES];
 	char victim_name[JS_HUD_PLAYER_NAME_BYTES];
 	char text[JS_HUD_EVENT_TEXT_BYTES];
-	int32_t reserved;
+	int32_t rarity_flags;
 } JS_HUD_EventV1;
 
 typedef struct JS_HUD_EventBufferV1
@@ -208,7 +208,7 @@ enum JS_HUD_EventIntField
 	JS_HUD_EVENT_INT_ASSISTER_ID,
 	JS_HUD_EVENT_INT_ASSISTER_TEAM,
 	JS_HUD_EVENT_INT_HEADSHOT,
-	JS_HUD_EVENT_INT_RESERVED,
+	JS_HUD_EVENT_INT_RARITY_FLAGS,
 };
 
 enum JS_HUD_EventTextField
@@ -269,7 +269,7 @@ void JS_HUD_RecordScoreInfo( int player, int frags, int deaths, int playerclass,
 void JS_HUD_RecordAssistInfo( int player, int assists );
 void JS_HUD_RecordTeamInfo( int player, const char *team_name, int teamnumber );
 void JS_HUD_RecordRadarPosition( int player, float x, float y, float z );
-void JS_HUD_RecordKillEvent( int killer, int victim, int headshot, const char *weapon, int assister );
+void JS_HUD_RecordKillEvent( int killer, int victim, int headshot, const char *weapon, int assister, int rarityFlags );
 void JS_HUD_RecordRoundTextEvent( int msg_dest, const char *raw_text, const char *resolved_text );
 uint32_t JS_HUD_GetDebugCountersSize( void );
 int JS_HUD_GetDebugCounters( JS_HUD_DebugCountersV1 *out );
