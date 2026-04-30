@@ -371,6 +371,7 @@ public:
 	CHudUserCmd(HideScoreboard2);
 
 	CHudMsgFunc(ScoreInfo);
+	CHudMsgFunc(AssistInfo);
 	CHudMsgFunc(TeamInfo);
 	CHudMsgFunc(TeamScore);
 	CHudMsgFunc(TeamNames);
@@ -428,6 +429,7 @@ struct extra_player_info_t
 {
 	short frags;
 	short deaths;
+	short assists;
 	short team_id;
 	qboolean has_c4;
 	qboolean vip;

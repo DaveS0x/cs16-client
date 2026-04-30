@@ -2,7 +2,7 @@
 
 #include <stdint.h>
 
-#define JS_HUD_ABI_VERSION_1 0x00010000u
+#define JS_HUD_ABI_VERSION_1 0x00010001u
 #define JS_HUD_MAX_PLAYERS 32
 #define JS_HUD_PLAYER_NAME_BYTES 32
 #define JS_HUD_MAX_EVENTS 32
@@ -71,6 +71,7 @@ typedef struct JS_HUD_PlayerRowV1
 	float radar_x;
 	float radar_y;
 	char name[JS_HUD_PLAYER_NAME_BYTES];
+	int32_t assists;
 } JS_HUD_PlayerRowV1;
 
 typedef struct JS_HUD_RosterSnapshotV1
@@ -119,9 +120,12 @@ typedef struct JS_HUD_EventV1
 	int32_t victim_id;
 	int32_t killer_team;
 	int32_t victim_team;
+	int32_t assister_id;
+	int32_t assister_team;
 	int32_t headshot;
 	char weapon[JS_HUD_EVENT_WEAPON_BYTES];
 	char killer_name[JS_HUD_PLAYER_NAME_BYTES];
+	char assister_name[JS_HUD_PLAYER_NAME_BYTES];
 	char victim_name[JS_HUD_PLAYER_NAME_BYTES];
 	char text[JS_HUD_EVENT_TEXT_BYTES];
 	int32_t reserved;
@@ -173,6 +177,7 @@ enum JS_HUD_RosterPlayerIntField
 	JS_HUD_ROSTER_PLAYER_PING,
 	JS_HUD_ROSTER_PLAYER_MONEY,
 	JS_HUD_ROSTER_PLAYER_FLAGS,
+	JS_HUD_ROSTER_PLAYER_ASSISTS,
 };
 
 enum JS_HUD_RosterPlayerFloatField
@@ -200,6 +205,8 @@ enum JS_HUD_EventIntField
 	JS_HUD_EVENT_INT_VICTIM_ID,
 	JS_HUD_EVENT_INT_KILLER_TEAM,
 	JS_HUD_EVENT_INT_VICTIM_TEAM,
+	JS_HUD_EVENT_INT_ASSISTER_ID,
+	JS_HUD_EVENT_INT_ASSISTER_TEAM,
 	JS_HUD_EVENT_INT_HEADSHOT,
 	JS_HUD_EVENT_INT_RESERVED,
 };
@@ -208,6 +215,7 @@ enum JS_HUD_EventTextField
 {
 	JS_HUD_EVENT_TEXT_WEAPON = 0,
 	JS_HUD_EVENT_TEXT_KILLER_NAME,
+	JS_HUD_EVENT_TEXT_ASSISTER_NAME,
 	JS_HUD_EVENT_TEXT_VICTIM_NAME,
 	JS_HUD_EVENT_TEXT_TEXT,
 };
@@ -258,9 +266,10 @@ uint32_t JS_HUD_GetEventTextPacked( int slot, int text_field, int chunk );
 void JS_HUD_ResetEvents( void );
 void JS_HUD_ResetRosterMirror( void );
 void JS_HUD_RecordScoreInfo( int player, int frags, int deaths, int playerclass, int teamnumber );
+void JS_HUD_RecordAssistInfo( int player, int assists );
 void JS_HUD_RecordTeamInfo( int player, const char *team_name, int teamnumber );
 void JS_HUD_RecordRadarPosition( int player, float x, float y, float z );
-void JS_HUD_RecordKillEvent( int killer, int victim, int headshot, const char *weapon );
+void JS_HUD_RecordKillEvent( int killer, int victim, int headshot, const char *weapon, int assister );
 void JS_HUD_RecordRoundTextEvent( int msg_dest, const char *raw_text, const char *resolved_text );
 uint32_t JS_HUD_GetDebugCountersSize( void );
 int JS_HUD_GetDebugCounters( JS_HUD_DebugCountersV1 *out );

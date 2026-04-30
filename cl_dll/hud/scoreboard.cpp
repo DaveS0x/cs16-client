@@ -101,6 +101,7 @@ int CHudScoreboard :: Init( void )
 	HOOK_COMMAND( gHUD.m_Scoreboard, "hidescoreboard2", HideScoreboard2 );
 
 	HOOK_MESSAGE( gHUD.m_Scoreboard, ScoreInfo );
+	HOOK_MESSAGE( gHUD.m_Scoreboard, AssistInfo );
 	HOOK_MESSAGE( gHUD.m_Scoreboard, TeamScore );
 	HOOK_MESSAGE( gHUD.m_Scoreboard, TeamInfo );
 
@@ -559,6 +560,23 @@ int CHudScoreboard :: MsgFunc_ScoreInfo( const char *pszName, int iSize, void *p
 		JS_HUD_RecordScoreInfo( cl, frags, deaths, playerclass, teamnumber );
 
 		//gViewPort->UpdateOnPlayerInfo();
+	}
+
+	return 1;
+}
+
+int CHudScoreboard :: MsgFunc_AssistInfo( const char *pszName, int iSize, void *pbuf )
+{
+	m_iFlags |= HUD_DRAW;
+
+	BufferReader reader( pszName, pbuf, iSize );
+	short cl = reader.ReadByte();
+	short assists = reader.ReadShort();
+
+	if ( cl > 0 && cl <= MAX_PLAYERS )
+	{
+		g_PlayerExtraInfo[cl].assists = assists;
+		JS_HUD_RecordAssistInfo( cl, assists );
 	}
 
 	return 1;

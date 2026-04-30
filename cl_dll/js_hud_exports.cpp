@@ -9,9 +9,9 @@
 #include <string.h>
 
 static_assert(sizeof(JS_HUD_SnapshotV1) == 60, "JS_HUD_SnapshotV1 layout changed");
-static_assert(sizeof(JS_HUD_PlayerRowV1) == 80, "JS_HUD_PlayerRowV1 layout changed");
-static_assert(sizeof(JS_HUD_RosterSnapshotV1) == 2608, "JS_HUD_RosterSnapshotV1 layout changed");
-static_assert(sizeof(JS_HUD_EventV1) == 192, "JS_HUD_EventV1 layout changed");
+static_assert(sizeof(JS_HUD_PlayerRowV1) == 84, "JS_HUD_PlayerRowV1 layout changed");
+static_assert(sizeof(JS_HUD_RosterSnapshotV1) == 2736, "JS_HUD_RosterSnapshotV1 layout changed");
+static_assert(sizeof(JS_HUD_EventV1) == 232, "JS_HUD_EventV1 layout changed");
 static_assert(sizeof(JS_HUD_DebugCountersV1) == 40, "JS_HUD_DebugCountersV1 layout changed");
 
 namespace
@@ -19,10 +19,12 @@ namespace
 	struct HudRosterMirrorPlayer
 	{
 		bool seen_score;
+		bool seen_assist;
 		bool seen_team;
 		bool seen_radar;
 		int frags;
 		int deaths;
+		int assists;
 		int playerclass;
 		int teamnumber;
 		char teamname[MAX_TEAM_NAME];
@@ -221,7 +223,7 @@ namespace
 
 	inline bool HasMirrorSignal( const HudRosterMirrorPlayer &mirror )
 	{
-		return mirror.seen_score || mirror.seen_team || mirror.seen_radar;
+		return mirror.seen_score || mirror.seen_assist || mirror.seen_team || mirror.seen_radar;
 	}
 
 	inline void BuildRadarPoint( const Vector &origin, bool isLocal, float &radarX, float &radarY, bool &valid )
@@ -602,6 +604,7 @@ extern "C" int DLLEXPORT JS_HUD_GetRosterSnapshot( JS_HUD_RosterSnapshotV1 *out 
 		row.team = team;
 		row.kills = mirror.seen_score ? mirror.frags : extra.frags;
 		row.deaths = mirror.seen_score ? mirror.deaths : extra.deaths;
+		row.assists = mirror.seen_assist ? mirror.assists : extra.assists;
 		row.ping = info.ping < 0 ? 0 : info.ping;
 		row.money = extra.sb_account >= 0 ? Clamp( extra.sb_account, 0, 16000 ) : 0;
 		row.flags = 0;
@@ -702,6 +705,8 @@ extern "C" int DLLEXPORT JS_HUD_GetRosterPlayerInt( int slot, int field )
 		return row.money;
 	case JS_HUD_ROSTER_PLAYER_FLAGS:
 		return (int)row.flags;
+	case JS_HUD_ROSTER_PLAYER_ASSISTS:
+		return row.assists;
 	default:
 		return 0;
 	}
@@ -820,6 +825,10 @@ extern "C" int DLLEXPORT JS_HUD_GetEventInt( int slot, int field )
 		return event.killer_team;
 	case JS_HUD_EVENT_INT_VICTIM_TEAM:
 		return event.victim_team;
+	case JS_HUD_EVENT_INT_ASSISTER_ID:
+		return event.assister_id;
+	case JS_HUD_EVENT_INT_ASSISTER_TEAM:
+		return event.assister_team;
 	case JS_HUD_EVENT_INT_HEADSHOT:
 		return event.headshot;
 	case JS_HUD_EVENT_INT_RESERVED:
@@ -841,6 +850,8 @@ extern "C" uint32_t DLLEXPORT JS_HUD_GetEventTextPacked( int slot, int text_fiel
 		return PackAsciiChunk( event.weapon, sizeof(event.weapon), chunk );
 	case JS_HUD_EVENT_TEXT_KILLER_NAME:
 		return PackAsciiChunk( event.killer_name, sizeof(event.killer_name), chunk );
+	case JS_HUD_EVENT_TEXT_ASSISTER_NAME:
+		return PackAsciiChunk( event.assister_name, sizeof(event.assister_name), chunk );
 	case JS_HUD_EVENT_TEXT_VICTIM_NAME:
 		return PackAsciiChunk( event.victim_name, sizeof(event.victim_name), chunk );
 	case JS_HUD_EVENT_TEXT_TEXT:
@@ -877,6 +888,16 @@ extern "C" void DLLEXPORT JS_HUD_RecordScoreInfo( int player, int frags, int dea
 	g_ScoreInfoCount++;
 }
 
+extern "C" void DLLEXPORT JS_HUD_RecordAssistInfo( int player, int assists )
+{
+	if( player <= 0 || player > JS_HUD_MAX_PLAYERS )
+		return;
+
+	HudRosterMirrorPlayer &mirror = g_RosterMirror[player];
+	mirror.seen_assist = true;
+	mirror.assists = assists;
+}
+
 extern "C" void DLLEXPORT JS_HUD_RecordTeamInfo( int player, const char *team_name, int teamnumber )
 {
 	if( player <= 0 || player > JS_HUD_MAX_PLAYERS )
@@ -902,7 +923,7 @@ extern "C" void DLLEXPORT JS_HUD_RecordRadarPosition( int player, float x, float
 	g_RadarCount++;
 }
 
-extern "C" void DLLEXPORT JS_HUD_RecordKillEvent( int killer, int victim, int headshot, const char *weapon )
+extern "C" void DLLEXPORT JS_HUD_RecordKillEvent( int killer, int victim, int headshot, const char *weapon, int assister )
 {
 	g_DeathMsgCount++;
 	JS_HUD_EventV1 *event = PushEvent( JS_HUD_EVENT_KILL );
@@ -910,10 +931,13 @@ extern "C" void DLLEXPORT JS_HUD_RecordKillEvent( int killer, int victim, int he
 	event->victim_id = victim;
 	event->killer_team = NormalizeMirrorPlayerTeam( killer );
 	event->victim_team = NormalizeMirrorPlayerTeam( victim );
+	event->assister_id = assister;
+	event->assister_team = NormalizeMirrorPlayerTeam( assister );
 	event->headshot = headshot ? 1 : 0;
 	event->state = JS_HUD_ROUND_UNKNOWN;
 	CopyFixedString( event->weapon, sizeof(event->weapon), weapon && weapon[0] ? weapon : "world" );
 	CopyFixedString( event->killer_name, sizeof(event->killer_name), PlayerNameOrFallback( killer, killer > 0 ? "Player" : "World" ) );
+	CopyFixedString( event->assister_name, sizeof(event->assister_name), assister > 0 ? PlayerNameOrFallback( assister, "Player" ) : "" );
 	CopyFixedString( event->victim_name, sizeof(event->victim_name), PlayerNameOrFallback( victim, "Player" ) );
 }
 

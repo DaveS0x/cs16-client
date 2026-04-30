@@ -44,6 +44,13 @@ static int DEATHNOTICE_DISPLAY_TIME = 6;
 
 #define DEATHNOTICE_TOP		32
 
+enum DeathMessageFlags
+{
+	PLAYERDEATH_POSITION = 0x001,
+	PLAYERDEATH_ASSISTANT = 0x002,
+	PLAYERDEATH_KILLRARITY = 0x004,
+};
+
 DeathNoticeItem rgDeathNoticeList[ MAX_DEATHNOTICES + 1 ];
 
 int CHudDeathNotice :: Init( void )
@@ -172,7 +179,29 @@ int CHudDeathNotice :: MsgFunc_DeathMsg( const char *pszName, int iSize, void *p
 	strncpy( killedwith, "d_", sizeof(killedwith) );
 	const char *weaponName = reader.ReadString();
 	strncat( killedwith, weaponName, sizeof( killedwith ) - 2 );
-	JS_HUD_RecordKillEvent( killer, victim, headshot, weaponName );
+
+	int assister = 0;
+	if ( reader.Valid() )
+	{
+		const int deathMessageFlags = reader.ReadLong();
+		if ( !reader.Bad() )
+		{
+			if ( deathMessageFlags & PLAYERDEATH_POSITION )
+			{
+				reader.ReadCoord();
+				reader.ReadCoord();
+				reader.ReadCoord();
+			}
+
+			if ( !reader.Bad() && ( deathMessageFlags & PLAYERDEATH_ASSISTANT ) )
+				assister = reader.ReadByte();
+
+			if ( !reader.Bad() && ( deathMessageFlags & PLAYERDEATH_KILLRARITY ) )
+				reader.ReadLong();
+		}
+	}
+
+	JS_HUD_RecordKillEvent( killer, victim, headshot, weaponName, assister );
 
 	//if (gViewPort)
 	//	gViewPort->DeathMsg( killer, victim );
@@ -307,6 +336,5 @@ int CHudDeathNotice :: MsgFunc_DeathMsg( const char *pszName, int iSize, void *p
 
 	return 1;
 }
-
 
 
