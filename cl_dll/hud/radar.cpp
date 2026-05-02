@@ -34,9 +34,47 @@ version.
 #include "triangleapi.h"
 #include "vgui_parser.h"
 #include "js_hud_exports.h"
+#include <math.h>
 #ifndef M_PI
 #define M_PI		3.14159265358979323846	// matches value in gcc v2 math.h
 #endif
+
+#define COUNTERSOL_DEFAULT_C4_TIMER_SEC 45
+
+static float g_flCounterSolBombExpireTime = 0.0f;
+static int g_iCounterSolBombDurationSec = 0;
+
+static float CounterSol_HudNow( void )
+{
+	const float hudNow = gHUD.m_flTime;
+	const float engineNow = gEngfuncs.GetClientTime();
+	if( hudNow > 0.0f && fabsf( hudNow - engineNow ) < 2.0f )
+		return hudNow;
+	return engineNow;
+}
+
+static void CounterSol_ClearBombTimer( void )
+{
+	g_flCounterSolBombExpireTime = 0.0f;
+	g_iCounterSolBombDurationSec = 0;
+}
+
+bool CounterSol_IsBombTimerActive( void )
+{
+	return CounterSol_GetBombTimerRemainingSec() > 0;
+}
+
+int CounterSol_GetBombTimerRemainingSec( void )
+{
+	if( g_flCounterSolBombExpireTime <= 0.0f || g_iCounterSolBombDurationSec <= 0 )
+		return 0;
+
+	const float remaining = g_flCounterSolBombExpireTime - CounterSol_HudNow();
+	if( remaining <= 0.0f )
+		return 0;
+
+	return (int)ceilf( remaining );
+}
 
 static byte	r_RadarCross[8][8] =
 {
@@ -101,6 +139,8 @@ int CHudRadar::Init()
 
 void CHudRadar::Reset()
 {
+	CounterSol_ClearBombTimer();
+
 	// make radar don't draw old players after new map
 	for( int i = 0; i < 34; i++ )
 	{
@@ -527,14 +567,40 @@ int CHudRadar::MsgFunc_BombDrop(const char *pszName, int iSize, void *pbuf)
 
 	if( Flag ) // bomb planted
 	{
+		int bombTimerSec = 0;
+		bool hasBombTimerSec = false;
+		if( iSize >= 9 )
+		{
+			bombTimerSec = max( 0, (int)reader.ReadShort() );
+			hasBombTimerSec = true;
+		}
+
+		if( !hasBombTimerSec )
+			bombTimerSec = COUNTERSOL_DEFAULT_C4_TIMER_SEC;
+
+		if( bombTimerSec > 0 )
+		{
+			g_iCounterSolBombDurationSec = bombTimerSec;
+			g_flCounterSolBombExpireTime = CounterSol_HudNow() + (float)bombTimerSec;
+		}
+		else
+		{
+			CounterSol_ClearBombTimer();
+		}
+
 		gHUD.m_SpectatorGui.m_bBombPlanted = 0;
 		gHUD.m_Timer.m_iFlags = 0;
+	}
+	else
+	{
+		CounterSol_ClearBombTimer();
 	}
 	return 1;
 }
 
 int CHudRadar::MsgFunc_BombPickup(const char *pszName, int iSize, void *pbuf)
 {
+	CounterSol_ClearBombTimer();
 	g_PlayerExtraInfo[33].radarflashes = false;
 	g_PlayerExtraInfo[33].dead = true;
 

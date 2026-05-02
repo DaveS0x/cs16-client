@@ -25,6 +25,18 @@
 extern bool g_bInBombZone;
 #endif
 
+#ifndef CLIENT_DLL
+static int CounterSol_GetC4TimerCvarValue(void)
+{
+	int c4Timer = int(CVAR_GET_FLOAT("mp_c4timer"));
+	if (c4Timer > 90)
+		c4Timer = 90;
+	else if (c4Timer < 10)
+		c4Timer = 10;
+	return c4Timer;
+}
+#endif
+
 LINK_ENTITY_TO_CLASS(weapon_c4, CC4)
 
 void CC4::Spawn(void)
@@ -171,10 +183,10 @@ void CC4::PrimaryAttack(void)
 					m_pPlayer->m_bHasC4 = false;
 
 #ifndef CLIENT_DLL
-					if (pev->speed != 0 && CSGameRules())
-					{
-						CSGameRules()->m_iC4Timer = int(pev->speed);
-					}
+						if (CSGameRules())
+						{
+							CSGameRules()->m_iC4Timer = CounterSol_GetC4TimerCvarValue();
+						}
 #endif
 
 #ifndef CLIENT_DLL
@@ -190,10 +202,11 @@ void CC4::PrimaryAttack(void)
 
 					MESSAGE_BEGIN(MSG_ALL, gmsgBombDrop);
 						WRITE_COORD(pBomb->pev->origin.x);
-						WRITE_COORD(pBomb->pev->origin.y);
-						WRITE_COORD(pBomb->pev->origin.z);
-						WRITE_BYTE(BOMB_FLAG_PLANTED);
-					MESSAGE_END();
+							WRITE_COORD(pBomb->pev->origin.y);
+							WRITE_COORD(pBomb->pev->origin.z);
+							WRITE_BYTE(BOMB_FLAG_PLANTED);
+							WRITE_SHORT(int(Q_max(0.0f, pBomb->m_flC4Blow - gpGlobals->time)));
+						MESSAGE_END();
 
 					UTIL_ClientPrintAll(HUD_PRINTCENTER, "#Bomb_Planted");
 
@@ -349,10 +362,10 @@ void CC4::Use(CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE useType, f
 		pPlayer->m_pentCurBombTarget = NULL;
 
 #ifndef CLIENT_DLL
-		if (pev->speed != 0 && CSGameRules())
-		{
-			CSGameRules()->m_iC4Timer = int(pev->speed);
-		}
+			if (CSGameRules())
+			{
+				CSGameRules()->m_iC4Timer = CounterSol_GetC4TimerCvarValue();
+			}
 #endif
 
 		EMIT_SOUND(edict(), CHAN_WEAPON, "weapons/c4_plant.wav", VOL_NORM, ATTN_NORM);

@@ -118,7 +118,9 @@ int CHudTimer::MsgFunc_RoundTime(const char *pszName, int iSize, void *pbuf)
 {
 	BufferReader reader( pszName, pbuf, iSize );
 	m_iTime = reader.ReadShort();
-	m_fStartTime = gHUD.m_flTime;
+	m_fStartTime = gEngfuncs.GetClientTime();
+	if( m_fStartTime <= 0.0f )
+		m_fStartTime = gHUD.m_flTime;
 	m_iFlags = HUD_DRAW;
 	return 1;
 }

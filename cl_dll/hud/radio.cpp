@@ -31,6 +31,7 @@ version.
 #include "r_efx.h"
 #include "event_api.h"
 #include "com_model.h"
+#include "js_hud_exports.h"
 #include <string.h>
 
 int CHudRadio::Init( )
@@ -59,6 +60,8 @@ int CHudRadio::MsgFunc_SendAudio( const char *pszName, int iSize, void *pbuf )
 	int SenderID = reader.ReadByte( );
 	char *sentence = reader.ReadString( );
 	int pitch = reader.ReadShort( );
+
+	JS_HUD_RecordRoundTextEvent( HUD_PRINTCENTER, sentence, sentence );
 
 	Broadcast( sentence, pitch );
 

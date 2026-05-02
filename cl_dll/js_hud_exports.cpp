@@ -1,6 +1,7 @@
 #include "hud.h"
 #include "ammohistory.h"
 #include "com_weapons.h"
+#include "hud/radar.h"
 #include "js_hud_exports.h"
 
 #include <ctype.h>
@@ -8,7 +9,7 @@
 #include <stdio.h>
 #include <string.h>
 
-static_assert(sizeof(JS_HUD_SnapshotV1) == 60, "JS_HUD_SnapshotV1 layout changed");
+static_assert(sizeof(JS_HUD_SnapshotV1) == 72, "JS_HUD_SnapshotV1 layout changed");
 static_assert(sizeof(JS_HUD_CrosshairStateV1) == 56, "JS_HUD_CrosshairStateV1 layout changed");
 static_assert(sizeof(JS_HUD_PlayerRowV1) == 84, "JS_HUD_PlayerRowV1 layout changed");
 static_assert(sizeof(JS_HUD_RosterSnapshotV1) == 2736, "JS_HUD_RosterSnapshotV1 layout changed");
@@ -140,8 +141,18 @@ namespace
 		return bombInfo.playerclass ? 2 : 1;
 	}
 
+	inline bool IsRoundTimerActive()
+	{
+		// The web overlay intentionally hides the native HUD. RoundTime is still
+		// authoritative, so do not tie the exported timer to native draw flags.
+		return gHUD.m_Timer.GetBaseRoundTimeSec() > 0;
+	}
+
 	inline int GetRoundTimerRemainingSec()
 	{
+		if( !IsRoundTimerActive() )
+			return 0;
+
 		// HUD redraw can be suppressed in web overlays, which may stall gHUD.m_flTime.
 		// Prefer HUD clock when aligned with engine clock, otherwise use engine client time.
 		const float hudNow = gHUD.m_flTime;
@@ -310,6 +321,7 @@ namespace
 	int MatchRoundState( const char *rawText, const char *resolvedText )
 	{
 		if( ContainsEitherNoCase( rawText, resolvedText, "ct_win" ) ||
+			ContainsEitherNoCase( rawText, resolvedText, "ctwin" ) ||
 			ContainsEitherNoCase( rawText, resolvedText, "cts_win" ) ||
 			ContainsEitherNoCase( rawText, resolvedText, "cts win" ) ||
 			ContainsEitherNoCase( rawText, resolvedText, "counter-terrorists win" ) ||
@@ -317,6 +329,7 @@ namespace
 			return JS_HUD_ROUND_CT_WIN;
 
 		if( ContainsEitherNoCase( rawText, resolvedText, "terrorists_win" ) ||
+			ContainsEitherNoCase( rawText, resolvedText, "terwin" ) ||
 			ContainsEitherNoCase( rawText, resolvedText, "terrorists win" ) )
 			return JS_HUD_ROUND_T_WIN;
 
@@ -422,13 +435,17 @@ namespace
 			weaponId == WEAPON_G3SG1;
 	}
 
-	uint32_t BuildFlags( int alive, int team, int isBuyzone, int bombState, bool hasWeapon )
+	uint32_t BuildFlags( int alive, int team, int isBuyzone, int bombState, bool hasWeapon, bool roundTimerActive, bool bombTimerActive )
 	{
 		uint32_t flags = 0;
 		flags |= JS_HUD_FLAG_VALID_HEALTH;
 		flags |= JS_HUD_FLAG_VALID_ARMOR;
 		flags |= JS_HUD_FLAG_VALID_MONEY;
-		flags |= JS_HUD_FLAG_VALID_ROUND_TIMER;
+		if( roundTimerActive )
+		{
+			flags |= JS_HUD_FLAG_VALID_ROUND_TIMER;
+			flags |= JS_HUD_FLAG_ROUND_TIMER_ACTIVE;
+		}
 
 		if( hasWeapon )
 		{
@@ -449,6 +466,8 @@ namespace
 			flags |= JS_HUD_FLAG_FREEZE_TIME;
 		if( g_bInBombZone )
 			flags |= JS_HUD_FLAG_IN_BOMB_ZONE;
+		if( bombTimerActive )
+			flags |= JS_HUD_FLAG_BOMB_TIMER_ACTIVE;
 
 		flags |= ((uint32_t)(team & 0x3) << JS_HUD_TEAM_SHIFT);
 		return flags;
@@ -484,6 +503,9 @@ extern "C" int DLLEXPORT JS_HUD_GetSnapshot( JS_HUD_SnapshotV1 *out )
 	const int alive = GetAlive();
 	const int isBuyzone = GetBuyzoneHint();
 	const int bombState = GetBombState();
+	const bool roundTimerActive = IsRoundTimerActive();
+	const int bombTime = CounterSol_GetBombTimerRemainingSec();
+	const bool bombTimerActive = bombState == 2 && bombTime > 0;
 	const float hudTime = gHUD.m_flTime;
 
 	out->abi_version = JS_HUD_ABI_VERSION_1;
@@ -500,7 +522,10 @@ extern "C" int DLLEXPORT JS_HUD_GetSnapshot( JS_HUD_SnapshotV1 *out )
 	out->team = team;
 	out->alive = alive;
 	out->bomb_state = bombState;
-	out->flags = BuildFlags( alive, team, isBuyzone, bombState, hasWeapon );
+	out->flags = BuildFlags( alive, team, isBuyzone, bombState, hasWeapon, roundTimerActive, bombTimerActive );
+	out->round_timer_active = roundTimerActive ? 1 : 0;
+	out->bomb_time_sec = bombTime;
+	out->bomb_timer_active = bombTimerActive ? 1 : 0;
 
 	return 1;
 }
@@ -513,6 +538,11 @@ extern "C" const JS_HUD_SnapshotV1 *DLLEXPORT JS_HUD_GetSnapshotPtr( void )
 extern "C" int DLLEXPORT JS_HUD_GetRoundTimer( void )
 {
 	return Clamp( GetRoundTimerRemainingSec(), 0, 600 );
+}
+
+extern "C" int DLLEXPORT JS_HUD_GetBombTimer( void )
+{
+	return Clamp( CounterSol_GetBombTimerRemainingSec(), 0, 600 );
 }
 
 extern "C" int DLLEXPORT JS_HUD_GetWeapon( void )
@@ -562,7 +592,9 @@ extern "C" int DLLEXPORT JS_HUD_GetFlags( void )
 	const int alive = GetAlive();
 	const int isBuyzone = GetBuyzoneHint();
 	const int bombState = GetBombState();
-	return (int)BuildFlags( alive, team, isBuyzone, bombState, hasWeapon );
+	const bool roundTimerActive = IsRoundTimerActive();
+	const bool bombTimerActive = bombState == 2 && CounterSol_IsBombTimerActive();
+	return (int)BuildFlags( alive, team, isBuyzone, bombState, hasWeapon, roundTimerActive, bombTimerActive );
 }
 
 extern "C" uint32_t DLLEXPORT JS_HUD_GetCrosshairStateSize( void )

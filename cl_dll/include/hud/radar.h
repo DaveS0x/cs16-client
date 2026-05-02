@@ -8,6 +8,9 @@ Copyright (C) 2015 a1batross
 
 class CClientSprite;
 
+bool CounterSol_IsBombTimerActive( void );
+int CounterSol_GetBombTimerRemainingSec( void );
+
 class CHudRadar: public CHudBase
 {
 public:
