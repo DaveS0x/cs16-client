@@ -9,6 +9,7 @@
 #include <string.h>
 
 static_assert(sizeof(JS_HUD_SnapshotV1) == 60, "JS_HUD_SnapshotV1 layout changed");
+static_assert(sizeof(JS_HUD_CrosshairStateV1) == 56, "JS_HUD_CrosshairStateV1 layout changed");
 static_assert(sizeof(JS_HUD_PlayerRowV1) == 84, "JS_HUD_PlayerRowV1 layout changed");
 static_assert(sizeof(JS_HUD_RosterSnapshotV1) == 2736, "JS_HUD_RosterSnapshotV1 layout changed");
 static_assert(sizeof(JS_HUD_EventV1) == 232, "JS_HUD_EventV1 layout changed");
@@ -33,9 +34,11 @@ namespace
 
 	JS_HUD_EventV1 g_EventRing[JS_HUD_MAX_EVENTS];
 	JS_HUD_SnapshotV1 g_StaticSnapshot;
+	JS_HUD_CrosshairStateV1 g_StaticCrosshairState;
 	JS_HUD_RosterSnapshotV1 g_StaticRosterSnapshot;
 	JS_HUD_EventBufferV1 g_StaticEventBuffer;
 	JS_HUD_DebugCountersV1 g_StaticDebugCounters;
+	CrosshairDynamicsCache g_CrosshairExportCache = { 0.0f, 0, 0.0f };
 	uint32_t g_NextEventSeq = 1;
 	HudRosterMirrorPlayer g_RosterMirror[MAX_PLAYERS + 1];
 	uint32_t g_RosterSnapshotCount = 0;
@@ -411,6 +414,14 @@ namespace
 		return hasWeaponDef || hasClip;
 	}
 
+	inline bool IsSniperCrosshairWeapon( int weaponId )
+	{
+		return weaponId == WEAPON_AWP ||
+			weaponId == WEAPON_SCOUT ||
+			weaponId == WEAPON_SG550 ||
+			weaponId == WEAPON_G3SG1;
+	}
+
 	uint32_t BuildFlags( int alive, int team, int isBuyzone, int bombState, bool hasWeapon )
 	{
 		uint32_t flags = 0;
@@ -552,6 +563,77 @@ extern "C" int DLLEXPORT JS_HUD_GetFlags( void )
 	const int isBuyzone = GetBuyzoneHint();
 	const int bombState = GetBombState();
 	return (int)BuildFlags( alive, team, isBuyzone, bombState, hasWeapon );
+}
+
+extern "C" uint32_t DLLEXPORT JS_HUD_GetCrosshairStateSize( void )
+{
+	return (uint32_t)sizeof(JS_HUD_CrosshairStateV1);
+}
+
+extern "C" int DLLEXPORT JS_HUD_GetCrosshairState( JS_HUD_CrosshairStateV1 *out )
+{
+	if( !out )
+		return 0;
+
+	memset( out, 0, sizeof(JS_HUD_CrosshairStateV1) );
+
+	int weaponId = 0;
+	int clip = 0;
+	int reserve = 0;
+	const bool hasWeapon = ReadWeaponState( weaponId, clip, reserve );
+	const bool alive = GetAlive() != 0;
+	const bool scoped = gHUD.m_iFOV > 0 && gHUD.m_iFOV <= 40;
+	const bool sniper = IsSniperCrosshairWeapon( weaponId );
+	const bool shieldDrawn = ( g_iWeaponFlags & WPNSTATE_SHIELD_DRAWN ) != 0;
+	const bool valid = hasWeapon && weaponId > 0;
+	const bool visible = valid && alive && !scoped && !sniper && !shieldDrawn;
+
+	uint32_t flags = 0;
+	if( valid )
+		flags |= JS_HUD_CROSSHAIR_FLAG_VALID;
+	if( visible )
+		flags |= JS_HUD_CROSSHAIR_FLAG_VISIBLE;
+	if( scoped )
+		flags |= JS_HUD_CROSSHAIR_FLAG_SCOPED;
+	if( sniper )
+		flags |= JS_HUD_CROSSHAIR_FLAG_SNIPER;
+	if( shieldDrawn )
+		flags |= JS_HUD_CROSSHAIR_FLAG_SHIELD_DRAWN;
+	if( alive )
+		flags |= JS_HUD_CROSSHAIR_FLAG_ALIVE;
+
+	out->abi_version = JS_HUD_ABI_VERSION_1;
+	out->struct_size = (uint32_t)sizeof(JS_HUD_CrosshairStateV1);
+	out->tick = GetHudTimeMs();
+	out->flags = flags;
+	out->weapon_id = weaponId;
+	out->shots_fired = g_iShotsFired;
+	out->player_flags = g_iPlayerFlags;
+	out->weapon_flags = g_iWeaponFlags;
+	out->fov = gHUD.m_iFOV;
+	out->player_speed = g_flPlayerSpeed;
+
+	if( valid )
+	{
+		CrosshairDynamicsConfig config;
+		config.dynamicMove = true;
+		config.useWeaponBaseGap = true;
+		config.dynamicScale = 1.0f;
+		config.extraGap = 0.0f;
+		const CrosshairDynamicsResult dynamics =
+			CHudAmmo::CalculateCrosshairDynamics( weaponId, config, g_CrosshairExportCache );
+		out->base_gap = dynamics.baseGap;
+		out->movement_gap = dynamics.movementGap;
+		out->recoil_gap = dynamics.finalGap;
+		out->spread_delta = dynamics.spreadDelta;
+	}
+
+	return 1;
+}
+
+extern "C" const JS_HUD_CrosshairStateV1 *DLLEXPORT JS_HUD_GetCrosshairStatePtr( void )
+{
+	return JS_HUD_GetCrosshairState( &g_StaticCrosshairState ) ? &g_StaticCrosshairState : nullptr;
 }
 
 extern "C" uint32_t DLLEXPORT JS_HUD_GetRosterSnapshotSize( void )

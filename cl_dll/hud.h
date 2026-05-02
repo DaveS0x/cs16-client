@@ -128,6 +128,32 @@ struct HUDLIST {
 	HUDLIST		*pNext;
 };
 
+struct CrosshairDynamicsConfig
+{
+	bool dynamicMove;
+	bool useWeaponBaseGap;
+	float dynamicScale;
+	float extraGap;
+};
+
+struct CrosshairDynamicsCache
+{
+	float gap;
+	int lastShotsFired;
+	float prevTime;
+};
+
+struct CrosshairDynamicsResult
+{
+	float baseGap;
+	float movementGap;
+	float recoilGap;
+	float spreadDelta;
+	float finalGap;
+	int accuracyFlags;
+	int shotsFired;
+};
+
 
 
 //
@@ -164,6 +190,9 @@ public:
 	void CalcCrosshairColor();
 
 	static int ScaleForRes( float value, int height );
+	static float GetCrosshairBaseGap( int weaponId );
+	static float GetCrosshairShotGapDelta( int weaponId );
+	static CrosshairDynamicsResult CalculateCrosshairDynamics( int weaponId, const CrosshairDynamicsConfig &config, CrosshairDynamicsCache &cache );
 	float GetCrosshairGap( int weaponId );
 	void DrawCrosshair( int weaponId );
 	static int GetWeaponAccuracyFlags( int weaponId );

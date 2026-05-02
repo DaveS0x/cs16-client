@@ -1261,18 +1261,8 @@ int CHudAmmo::ScaleForRes( float value, int height )
 	return rint( value * ( (float)height / 480.0f ) );
 }
 
-float CHudAmmo::GetCrosshairGap( int weaponId )
+float CHudAmmo::GetCrosshairBaseGap( int weaponId )
 {
-	static float xhairGap;
-	static int lastShotsFired;
-	static float xhairPrevTime;
-	float minGap, deltaGap;
-
-	int xhairPlayerFlags = g_iPlayerFlags;
-	float xhairPlayerSpeed = g_flPlayerSpeed;
-	float clientTime = gEngfuncs.GetClientTime();
-	int xhairShotsFired = g_iShotsFired;
-
 	switch ( weaponId )
 	{
 	case WEAPON_P228:
@@ -1284,86 +1274,91 @@ float CHudAmmo::GetCrosshairGap( int weaponId )
 	case WEAPON_AWP:
 	case WEAPON_FLASHBANG:
 	case WEAPON_DEAGLE:
-		minGap = 8;
-		deltaGap = 3;
-		break;
+		return 8;
 
 	case WEAPON_SCOUT:
 	case WEAPON_SG550:
 	case WEAPON_SG552:
-		minGap = 5;
-		deltaGap = 3;
-		break;
+		return 5;
 
 	case WEAPON_XM1014:
-		minGap = 9;
-		deltaGap = 4;
-		break;
+		return 9;
 
 	case WEAPON_C4:
 	case WEAPON_UMP45:
 	case WEAPON_M249:
-		minGap = 6;
-		deltaGap = 3;
-		break;
+		return 6;
 
 	case WEAPON_MAC10:
-		minGap = 9;
-		deltaGap = 3;
-		break;
+		return 9;
 
 	case WEAPON_AUG:
-		minGap = 3;
-		deltaGap = 3;
-		break;
+		return 3;
 
 	case WEAPON_MP5N:
-		minGap = 6;
-		deltaGap = 2;
-		break;
+		return 6;
 
 	case WEAPON_M3:
-		minGap = 8;
-		deltaGap = 6;
-		break;
+		return 8;
 
 	case WEAPON_TMP:
 	case WEAPON_KNIFE:
 	case WEAPON_P90:
-		minGap = 7;
-		deltaGap = 3;
-		break;
+		return 7;
 
 	case WEAPON_G3SG1:
-		minGap = 6;
-		deltaGap = 4;
-		break;
+		return 6;
 
 	case WEAPON_AK47:
-		minGap = 4;
-		deltaGap = 4;
-		break;
+		return 4;
 
 	default:
-		minGap = 4;
-		deltaGap = 3;
-		break;
+		return 4;
 	}
+}
 
-	if ( !xhair_gap_useweaponvalue->value )
-		minGap = 4;
+float CHudAmmo::GetCrosshairShotGapDelta( int weaponId )
+{
+	switch ( weaponId )
+	{
+	case WEAPON_XM1014:
+	case WEAPON_AK47:
+	case WEAPON_G3SG1:
+		return 4;
+
+	case WEAPON_M3:
+		return 6;
+
+	case WEAPON_MP5N:
+		return 2;
+
+	default:
+		return 3;
+	}
+}
+
+CrosshairDynamicsResult CHudAmmo::CalculateCrosshairDynamics( int weaponId, const CrosshairDynamicsConfig &config, CrosshairDynamicsCache &cache )
+{
+	CrosshairDynamicsResult result;
+	memset( &result, 0, sizeof(result) );
+
+	float minGap = config.useWeaponBaseGap ? GetCrosshairBaseGap( weaponId ) : 4.0f;
+	const float deltaGap = GetCrosshairShotGapDelta( weaponId );
+
+	if ( !config.useWeaponBaseGap )
+		minGap = 4.0f;
 
 	float baseMinGap = minGap;
 	float absMinGap = baseMinGap * 0.5f;
 
 	int flags = GetWeaponAccuracyFlags( weaponId );
-	if ( xhair_dynamic_move->value && flags )
+	if ( config.dynamicMove && flags )
 	{
-		if ( !( xhairPlayerFlags & FL_ONGROUND ) && ( flags & ACCURACY_AIR ) )
+		if ( !( g_iPlayerFlags & FL_ONGROUND ) && ( flags & ACCURACY_AIR ) )
 		{
 			minGap *= 2.0f;
 		}
-		else if ( ( xhairPlayerFlags & FL_DUCKING ) && ( flags & ACCURACY_DUCK ) )
+		else if ( ( g_iPlayerFlags & FL_DUCKING ) && ( flags & ACCURACY_DUCK ) )
 		{
 			minGap *= 0.5f;
 		}
@@ -1392,7 +1387,7 @@ float CHudAmmo::GetCrosshairGap( int weaponId )
 				break;
 			}
 
-			if ( xhairPlayerSpeed > runLimit && ( flags & ACCURACY_RUN ) )
+			if ( g_flPlayerSpeed >= runLimit && ( flags & ACCURACY_RUN ) )
 				minGap *= 1.5f;
 		}
 
@@ -1402,38 +1397,58 @@ float CHudAmmo::GetCrosshairGap( int weaponId )
 		if ( flags & ACCURACY_VERY_INACCURATE )
 			minGap *= 1.4f;
 
-		minGap = baseMinGap + ( minGap - baseMinGap ) * xhair_dynamic_scale->value;
+		minGap = baseMinGap + ( minGap - baseMinGap ) * config.dynamicScale;
 		minGap = max( minGap, absMinGap );
 	}
 
-	if ( xhairPrevTime > clientTime )
+	float clientTime = gEngfuncs.GetClientTime();
+	if ( cache.prevTime > clientTime )
 	{
 		// client restart
-		xhairPrevTime = clientTime;
+		cache.prevTime = clientTime;
 	}
 
-	float deltaTime = clientTime - xhairPrevTime;
-	xhairPrevTime = clientTime;
+	float deltaTime = clientTime - cache.prevTime;
+	cache.prevTime = clientTime;
 
-	if ( xhairShotsFired <= lastShotsFired )
+	int xhairShotsFired = g_iShotsFired;
+	if ( xhairShotsFired <= cache.lastShotsFired )
 	{
 		// decay the crosshair as if we were always running at 100 fps
-		xhairGap -= ( 100 * deltaTime ) * ( 0.013f * xhairGap + 0.1f );
+		cache.gap -= ( 100 * deltaTime ) * ( 0.013f * cache.gap + 0.1f );
 	}
 	else
 	{
-		xhairGap += deltaGap * xhair_dynamic_scale->value;
-		xhairGap = min( xhairGap, MAX_XHAIR_GAP );
+		cache.gap += deltaGap * config.dynamicScale;
+		cache.gap = min( cache.gap, MAX_XHAIR_GAP );
 	}
 
 	if ( xhairShotsFired > 600 )
 		xhairShotsFired = 1;
 
-	lastShotsFired = xhairShotsFired;
+	cache.lastShotsFired = xhairShotsFired;
 
-	xhairGap = max( xhairGap, minGap );
+	cache.gap = max( cache.gap, minGap );
 
-	return xhairGap + xhair_gap->value;
+	result.baseGap = baseMinGap;
+	result.movementGap = minGap;
+	result.recoilGap = cache.gap;
+	result.spreadDelta = max( 0.0f, cache.gap - baseMinGap );
+	result.finalGap = cache.gap + config.extraGap;
+	result.accuracyFlags = flags;
+	result.shotsFired = xhairShotsFired;
+	return result;
+}
+
+float CHudAmmo::GetCrosshairGap( int weaponId )
+{
+	static CrosshairDynamicsCache xhairCache = { 0.0f, 0, 0.0f };
+	CrosshairDynamicsConfig config;
+	config.dynamicMove = xhair_dynamic_move ? xhair_dynamic_move->value != 0.0f : true;
+	config.useWeaponBaseGap = xhair_gap_useweaponvalue ? xhair_gap_useweaponvalue->value != 0.0f : false;
+	config.dynamicScale = xhair_dynamic_scale ? xhair_dynamic_scale->value : 0.0f;
+	config.extraGap = xhair_gap ? xhair_gap->value : 0.0f;
+	return CalculateCrosshairDynamics( weaponId, config, xhairCache ).finalGap;
 }
 
 void CHudAmmo::DrawCrosshairSection( int _x0, int _y0, int _x1, int _y1 )
@@ -2095,4 +2110,3 @@ void CHudAmmo::HideCrosshair()
 {
 	m_hStaticSpr = 0;
 }
-

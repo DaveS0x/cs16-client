@@ -48,6 +48,34 @@ typedef struct JS_HUD_SnapshotV1
 	uint32_t flags;
 } JS_HUD_SnapshotV1;
 
+enum JS_HUD_CrosshairFlags
+{
+	JS_HUD_CROSSHAIR_FLAG_VALID        = 1u << 0,
+	JS_HUD_CROSSHAIR_FLAG_VISIBLE      = 1u << 1,
+	JS_HUD_CROSSHAIR_FLAG_SCOPED       = 1u << 2,
+	JS_HUD_CROSSHAIR_FLAG_SNIPER       = 1u << 3,
+	JS_HUD_CROSSHAIR_FLAG_SHIELD_DRAWN = 1u << 4,
+	JS_HUD_CROSSHAIR_FLAG_ALIVE        = 1u << 5,
+};
+
+typedef struct JS_HUD_CrosshairStateV1
+{
+	uint32_t abi_version;
+	uint32_t struct_size;
+	uint32_t tick;
+	uint32_t flags;
+	int32_t weapon_id;
+	int32_t shots_fired;
+	int32_t player_flags;
+	int32_t weapon_flags;
+	int32_t fov;
+	float base_gap;
+	float movement_gap;
+	float recoil_gap;
+	float spread_delta;
+	float player_speed;
+} JS_HUD_CrosshairStateV1;
+
 enum JS_HUD_PlayerFlags
 {
 	JS_HUD_PLAYER_FLAG_LOCAL        = 1u << 0,
@@ -248,6 +276,9 @@ int JS_HUD_GetReserve( void );
 int JS_HUD_GetMoney( void );
 int JS_HUD_GetHealthArmor( void ); // lower 16 bits = health, upper 16 bits = armor
 int JS_HUD_GetFlags( void );
+uint32_t JS_HUD_GetCrosshairStateSize( void );
+int JS_HUD_GetCrosshairState( JS_HUD_CrosshairStateV1 *out );
+const JS_HUD_CrosshairStateV1 *JS_HUD_GetCrosshairStatePtr( void );
 uint32_t JS_HUD_GetRosterSnapshotSize( void );
 int JS_HUD_GetRosterSnapshot( JS_HUD_RosterSnapshotV1 *out );
 const JS_HUD_RosterSnapshotV1 *JS_HUD_GetRosterSnapshotPtr( void );
