@@ -73,6 +73,13 @@ static CBasePlayer	player;
 static globalvars_t	Globals = { };
 
 static CBasePlayerWeapon *g_pWpns[ 32 ];
+static int g_iLastDeployAnim[ MAX_WEAPONS ];
+static bool g_bHasLastDeployAnim[ MAX_WEAPONS ];
+static const double g_flHandSwitchDrawHoldTime = 1.5;
+static int g_iHandSwitchWeaponId = WEAPON_NONE;
+static int g_iHandSwitchAnim = -1;
+static double g_flHandSwitchAnimUntil = 0.0;
+static bool g_bHandSwitchAnimPending = false;
 
 
 // CS Weapon placeholder entities
@@ -431,6 +438,12 @@ BOOL CBasePlayerWeapon :: DefaultDeploy( const char *szViewModel, const char *sz
 	if ( !CanDeploy() )
 		return FALSE;
 
+	if ( m_iId > WEAPON_NONE && m_iId < MAX_WEAPONS )
+	{
+		g_iLastDeployAnim[ m_iId ] = iAnim;
+		g_bHasLastDeployAnim[ m_iId ] = true;
+	}
+
 	gEngfuncs.CL_LoadModel( szViewModel, &m_pPlayer->pev->viewmodel );
 
 	SendWeaponAnim( iAnim, skiplocal );
@@ -438,6 +451,161 @@ BOOL CBasePlayerWeapon :: DefaultDeploy( const char *szViewModel, const char *sz
 	m_pPlayer->m_flNextAttack = 0.75f;
 	m_flTimeWeaponIdle = 1.5f;
 	return TRUE;
+}
+
+static CBasePlayerWeapon *CounterSol_GetActiveWeaponForHandSwitch()
+{
+	int weaponId = HUD_GetWeapon();
+	if ( weaponId > WEAPON_NONE && weaponId < MAX_WEAPONS && g_pWpns[ weaponId ] )
+		return g_pWpns[ weaponId ];
+
+	if ( player.m_pActiveItem && player.m_pActiveItem->IsWeapon() )
+	{
+		weaponId = player.m_pActiveItem->m_iId;
+		if ( weaponId > WEAPON_NONE && weaponId < MAX_WEAPONS )
+			return g_pWpns[ weaponId ];
+	}
+
+	return NULL;
+}
+
+static int CounterSol_GetHandSwitchAnim( CBasePlayerWeapon *pWeapon )
+{
+	if ( !pWeapon )
+		return -1;
+
+	const int weaponId = pWeapon->m_iId;
+	if ( weaponId <= WEAPON_NONE || weaponId >= MAX_WEAPONS )
+		return -1;
+
+	switch ( weaponId )
+	{
+	case WEAPON_M4A1:
+		return ( pWeapon->m_iWeaponState & WPNSTATE_M4A1_SILENCED ) ? M4A1_DRAW : M4A1_UNSIL_DRAW;
+	case WEAPON_USP:
+		if ( g_bHasLastDeployAnim[ weaponId ] && g_iLastDeployAnim[ weaponId ] == USP_SHIELD_DRAW )
+			return USP_SHIELD_DRAW;
+
+		return ( pWeapon->m_iWeaponState & WPNSTATE_USP_SILENCED ) ? USP_DRAW : USP_UNSIL_DRAW;
+	default:
+		break;
+	}
+
+	if ( g_bHasLastDeployAnim[ weaponId ] )
+		return g_iLastDeployAnim[ weaponId ];
+
+	return HUD_GetWeaponAnim();
+}
+
+static double CounterSol_GetHandSwitchTime( void )
+{
+	const double flEngineTime = gEngfuncs.GetClientTime();
+	if ( gpGlobals && gpGlobals->time > flEngineTime )
+		return gpGlobals->time;
+
+	return flEngineTime;
+}
+
+static void CounterSol_ClearHandSwitchAnim( void )
+{
+	g_iHandSwitchWeaponId = WEAPON_NONE;
+	g_iHandSwitchAnim = -1;
+	g_flHandSwitchAnimUntil = 0.0;
+	g_bHandSwitchAnimPending = false;
+}
+
+static bool CounterSol_IsHandSwitchWindowActive( CBasePlayerWeapon *pWeapon )
+{
+	if ( !pWeapon || pWeapon->m_iId != g_iHandSwitchWeaponId || g_iHandSwitchAnim < 0 )
+	{
+		if ( g_iHandSwitchWeaponId != WEAPON_NONE )
+			CounterSol_ClearHandSwitchAnim();
+
+		return false;
+	}
+
+	if ( CounterSol_GetHandSwitchTime() >= g_flHandSwitchAnimUntil )
+	{
+		CounterSol_ClearHandSwitchAnim();
+		return false;
+	}
+
+	return true;
+}
+
+static bool CounterSol_HandSwitchOwnsCurrentAnim( void )
+{
+	return HUD_GetWeapon() == g_iHandSwitchWeaponId && HUD_GetWeaponAnim() == g_iHandSwitchAnim;
+}
+
+static void CounterSol_ProtectHandSwitchIdle( CBasePlayerWeapon *pWeapon )
+{
+	if ( !CounterSol_IsHandSwitchWindowActive( pWeapon ) )
+		return;
+
+	if ( !g_bHandSwitchAnimPending && !CounterSol_HandSwitchOwnsCurrentAnim() )
+	{
+		CounterSol_ClearHandSwitchAnim();
+		return;
+	}
+
+	const float flRemaining = (float)( g_flHandSwitchAnimUntil - CounterSol_GetHandSwitchTime() );
+	if ( pWeapon->m_flTimeWeaponIdle < flRemaining )
+		pWeapon->m_flTimeWeaponIdle = flRemaining;
+}
+
+static bool CounterSol_ApplyHandSwitchPrediction( CBasePlayerWeapon *pWeapon, local_state_s *to )
+{
+	if ( !CounterSol_IsHandSwitchWindowActive( pWeapon ) )
+		return false;
+
+	if ( g_bHandSwitchAnimPending && g_runfuncs )
+	{
+		HUD_SendWeaponAnim( g_iHandSwitchAnim, g_iHandSwitchWeaponId, 0, 1 );
+		g_bHandSwitchAnimPending = false;
+	}
+
+	if ( !CounterSol_HandSwitchOwnsCurrentAnim() )
+	{
+		if ( !g_bHandSwitchAnimPending )
+			CounterSol_ClearHandSwitchAnim();
+
+		return false;
+	}
+
+	player.pev->weaponanim = g_iHandSwitchAnim;
+	to->client.weaponanim = g_iHandSwitchAnim;
+	return true;
+}
+
+void CounterSol_ReplayActiveWeaponDrawAnim( void )
+{
+	if ( CL_IsDead() || g_iUser1 || !gEngfuncs.GetViewModel() )
+		return;
+
+	CBasePlayerWeapon *pWeapon = CounterSol_GetActiveWeaponForHandSwitch();
+	const int iAnim = CounterSol_GetHandSwitchAnim( pWeapon );
+	if ( !pWeapon || iAnim < 0 )
+		return;
+
+	g_iHandSwitchWeaponId = pWeapon->m_iId;
+	g_iHandSwitchAnim = iAnim;
+	g_flHandSwitchAnimUntil = CounterSol_GetHandSwitchTime() + g_flHandSwitchDrawHoldTime;
+	g_bHandSwitchAnimPending = true;
+	pWeapon->m_flTimeWeaponIdle = (float)g_flHandSwitchDrawHoldTime;
+	if ( pWeapon->m_pPlayer && pWeapon->m_pPlayer->pev )
+		pWeapon->m_pPlayer->pev->weaponanim = iAnim;
+
+	HUD_SendWeaponAnim( iAnim, pWeapon->m_iId, 0, 1 );
+}
+
+void CounterSol_ToggleWeaponHand( void )
+{
+	if ( !gHUD.cl_righthand )
+		return;
+
+	gEngfuncs.Cvar_SetValue( "cl_righthand", gHUD.cl_righthand->value > 0.0f ? 0.0f : 1.0f );
+	CounterSol_ReplayActiveWeaponDrawAnim();
 }
 
 /*
@@ -1283,6 +1451,8 @@ void HUD_WeaponsPostThink( local_state_s *from, local_state_s *to, usercmd_t *cm
 	if ( from->client.m_iId )
 		player.m_pActiveItem = pWeapon;
 
+	CounterSol_ProtectHandSwitchIdle( pWeapon );
+
 	// Don't go firing anything if we have died.
 	// Or if we don't have a weapon model deployed
 	if ( ( player.pev->deadflag != ( DEAD_DISCARDBODY + 1 ) ) &&
@@ -1350,11 +1520,12 @@ void HUD_WeaponsPostThink( local_state_s *from, local_state_s *to, usercmd_t *cm
 	to->client.iuser3 = flags;
 
 
+	const bool bHandSwitchAnimProtected = CounterSol_ApplyHandSwitchPrediction( pWeapon, to );
 
 
 	// Make sure that weapon animation matches what the game .dll is telling us
 	//  over the wire ( fixes some animation glitches )
-	if ( g_runfuncs && ( HUD_GetWeaponAnim() != to->client.weaponanim ) )
+	if ( g_runfuncs && !bHandSwitchAnimProtected && ( HUD_GetWeaponAnim() != to->client.weaponanim ) )
 		// Force a fixed anim down to viewmodel
 		HUD_SendWeaponAnim( to->client.weaponanim, to->client.m_iId, 2, 1 );
 

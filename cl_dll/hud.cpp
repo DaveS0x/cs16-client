@@ -35,6 +35,7 @@
 #include "camera.h"
 
 #include "draw_util.h"
+#include "com_weapons.h"
 
 #if __EMSCRIPTEN__
 #include <emscripten.h>
@@ -132,6 +133,11 @@ void __CmdFunc_GunSmoke()
 		gEngfuncs.Cvar_SetValue( "cl_gunsmoke", 0 );
 	else
 		gEngfuncs.Cvar_SetValue( "cl_gunsmoke", 1 );
+}
+
+void __CmdFunc_SwitchHands()
+{
+	CounterSol_ToggleWeaponHand();
 }
 
 /*
@@ -260,6 +266,8 @@ void CHud :: Init( void )
 
 	HOOK_COMMAND_FUNC( "special", __CmdFunc_InputCommandSpecial, );
 	HOOK_COMMAND_FUNC( "gunsmoke", __CmdFunc_GunSmoke, );
+	HOOK_COMMAND_FUNC( "switchhands", __CmdFunc_SwitchHands, );
+	HOOK_COMMAND_FUNC( "cs_switchhands", __CmdFunc_SwitchHands, );
 
 #ifdef __ANDROID__
 	HOOK_COMMAND_FUNC( "evdev_mouseopen", __CmdFunc_MouseSucksOpen );
