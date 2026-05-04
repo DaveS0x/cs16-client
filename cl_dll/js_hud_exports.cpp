@@ -15,6 +15,8 @@ static_assert(sizeof(JS_HUD_PlayerRowV1) == 84, "JS_HUD_PlayerRowV1 layout chang
 static_assert(sizeof(JS_HUD_RosterSnapshotV1) == 2736, "JS_HUD_RosterSnapshotV1 layout changed");
 static_assert(sizeof(JS_HUD_EventV1) == 232, "JS_HUD_EventV1 layout changed");
 static_assert(sizeof(JS_HUD_DebugCountersV1) == 40, "JS_HUD_DebugCountersV1 layout changed");
+static_assert(sizeof(JS_HUD_DeathStatsRowV1) == 48, "JS_HUD_DeathStatsRowV1 layout changed");
+static_assert(sizeof(JS_HUD_DeathStatsSnapshotV1) == 3204, "JS_HUD_DeathStatsSnapshotV1 layout changed");
 
 namespace
 {
@@ -39,6 +41,7 @@ namespace
 	JS_HUD_RosterSnapshotV1 g_StaticRosterSnapshot;
 	JS_HUD_EventBufferV1 g_StaticEventBuffer;
 	JS_HUD_DebugCountersV1 g_StaticDebugCounters;
+	JS_HUD_DeathStatsSnapshotV1 g_StaticDeathStatsSnapshot;
 	CrosshairDynamicsCache g_CrosshairExportCache = { 0.0f, 0, 0.0f };
 	uint32_t g_NextEventSeq = 1;
 	HudRosterMirrorPlayer g_RosterMirror[MAX_PLAYERS + 1];
@@ -216,6 +219,34 @@ namespace
 			g_PlayerInfoList[playerIndex].name[0] )
 			return g_PlayerInfoList[playerIndex].name;
 		return fallback;
+	}
+
+	inline void FillDeathStatsRow( JS_HUD_DeathStatsRowV1 &row, int playerId, int damage, int hits )
+	{
+		memset( &row, 0, sizeof(row) );
+		row.player_id = Clamp( playerId, 0, JS_HUD_MAX_PLAYERS );
+		row.team = NormalizeMirrorPlayerTeam( row.player_id );
+		row.damage = Clamp( damage, 0, 32767 );
+		row.hits = Clamp( hits, 0, 255 );
+		CopyFixedString( row.player_name, sizeof(row.player_name), PlayerNameOrFallback( row.player_id, "Player" ) );
+	}
+
+	inline JS_HUD_DeathStatsRowV1 *DeathStatsRowsForGroup( int group, int &count )
+	{
+		if( group == JS_HUD_DEATH_STATS_GROUP_ATTACKERS )
+		{
+			count = g_StaticDeathStatsSnapshot.attacker_count;
+			return g_StaticDeathStatsSnapshot.attackers;
+		}
+
+		if( group == JS_HUD_DEATH_STATS_GROUP_VICTIMS )
+		{
+			count = g_StaticDeathStatsSnapshot.victim_count;
+			return g_StaticDeathStatsSnapshot.victims;
+		}
+
+		count = 0;
+		return nullptr;
 	}
 
 	inline bool OriginHasSignal( const Vector &origin )
@@ -1066,6 +1097,146 @@ extern "C" void DLLEXPORT JS_HUD_RecordRoundTextEvent( int msg_dest, const char 
 	JS_HUD_EventV1 *event = PushEvent( JS_HUD_EVENT_ROUND );
 	event->state = state;
 	snprintf( event->text, sizeof(event->text), "%s", resolved_text && resolved_text[0] ? resolved_text : ( raw_text ? raw_text : "" ) );
+}
+
+extern "C" void DLLEXPORT JS_HUD_RecordDeathStats(
+	int seq,
+	int victim,
+	int killer,
+	const char *weapon,
+	int attackerCount,
+	const int *attackerIds,
+	const int *attackerDamage,
+	const int *attackerHits,
+	int victimCount,
+	const int *victimIds,
+	const int *victimDamage,
+	const int *victimHits
+)
+{
+	memset( &g_StaticDeathStatsSnapshot, 0, sizeof(g_StaticDeathStatsSnapshot) );
+	g_StaticDeathStatsSnapshot.abi_version = JS_HUD_ABI_VERSION_1;
+	g_StaticDeathStatsSnapshot.struct_size = (uint32_t)sizeof(JS_HUD_DeathStatsSnapshotV1);
+	g_StaticDeathStatsSnapshot.row_size = (uint32_t)sizeof(JS_HUD_DeathStatsRowV1);
+	g_StaticDeathStatsSnapshot.seq = seq > 0 ? (uint32_t)seq : 0u;
+	g_StaticDeathStatsSnapshot.time_ms = GetHudTimeMs();
+	g_StaticDeathStatsSnapshot.victim_id = Clamp( victim, 0, JS_HUD_MAX_PLAYERS );
+	g_StaticDeathStatsSnapshot.killer_id = Clamp( killer, 0, JS_HUD_MAX_PLAYERS );
+	g_StaticDeathStatsSnapshot.victim_team = NormalizeMirrorPlayerTeam( victim );
+	g_StaticDeathStatsSnapshot.killer_team = NormalizeMirrorPlayerTeam( killer );
+	g_StaticDeathStatsSnapshot.attacker_count = Clamp( attackerCount, 0, JS_HUD_MAX_DEATH_STATS_ROWS );
+	g_StaticDeathStatsSnapshot.victim_count = Clamp( victimCount, 0, JS_HUD_MAX_DEATH_STATS_ROWS );
+
+	CopyFixedString( g_StaticDeathStatsSnapshot.weapon, sizeof(g_StaticDeathStatsSnapshot.weapon), weapon && weapon[0] ? weapon : "world" );
+	CopyFixedString(
+		g_StaticDeathStatsSnapshot.killer_name,
+		sizeof(g_StaticDeathStatsSnapshot.killer_name),
+		PlayerNameOrFallback( killer, killer > 0 ? "Player" : "World" )
+	);
+	CopyFixedString(
+		g_StaticDeathStatsSnapshot.victim_name,
+		sizeof(g_StaticDeathStatsSnapshot.victim_name),
+		PlayerNameOrFallback( victim, "Player" )
+	);
+
+	for( int i = 0; i < g_StaticDeathStatsSnapshot.attacker_count; i++ )
+	{
+		FillDeathStatsRow(
+			g_StaticDeathStatsSnapshot.attackers[i],
+			attackerIds ? attackerIds[i] : 0,
+			attackerDamage ? attackerDamage[i] : 0,
+			attackerHits ? attackerHits[i] : 0
+		);
+	}
+
+	for( int i = 0; i < g_StaticDeathStatsSnapshot.victim_count; i++ )
+	{
+		FillDeathStatsRow(
+			g_StaticDeathStatsSnapshot.victims[i],
+			victimIds ? victimIds[i] : 0,
+			victimDamage ? victimDamage[i] : 0,
+			victimHits ? victimHits[i] : 0
+		);
+	}
+}
+
+extern "C" int DLLEXPORT JS_HUD_GetDeathStatsMeta( int field )
+{
+	if( g_StaticDeathStatsSnapshot.abi_version != JS_HUD_ABI_VERSION_1 )
+		return 0;
+
+	switch( field )
+	{
+	case JS_HUD_DEATH_STATS_META_SEQ:
+		return (int)g_StaticDeathStatsSnapshot.seq;
+	case JS_HUD_DEATH_STATS_META_TIME_MS:
+		return (int)g_StaticDeathStatsSnapshot.time_ms;
+	case JS_HUD_DEATH_STATS_META_VICTIM_ID:
+		return g_StaticDeathStatsSnapshot.victim_id;
+	case JS_HUD_DEATH_STATS_META_KILLER_ID:
+		return g_StaticDeathStatsSnapshot.killer_id;
+	case JS_HUD_DEATH_STATS_META_VICTIM_TEAM:
+		return g_StaticDeathStatsSnapshot.victim_team;
+	case JS_HUD_DEATH_STATS_META_KILLER_TEAM:
+		return g_StaticDeathStatsSnapshot.killer_team;
+	case JS_HUD_DEATH_STATS_META_ATTACKER_COUNT:
+		return g_StaticDeathStatsSnapshot.attacker_count;
+	case JS_HUD_DEATH_STATS_META_VICTIM_COUNT:
+		return g_StaticDeathStatsSnapshot.victim_count;
+	default:
+		return 0;
+	}
+}
+
+extern "C" int DLLEXPORT JS_HUD_GetDeathStatsRowInt( int group, int slot, int field )
+{
+	int count = 0;
+	JS_HUD_DeathStatsRowV1 *rows = DeathStatsRowsForGroup( group, count );
+	if( !rows || slot < 0 || slot >= count || slot >= JS_HUD_MAX_DEATH_STATS_ROWS )
+		return 0;
+
+	const JS_HUD_DeathStatsRowV1 &row = rows[slot];
+	switch( field )
+	{
+	case JS_HUD_DEATH_STATS_ROW_PLAYER_ID:
+		return row.player_id;
+	case JS_HUD_DEATH_STATS_ROW_TEAM:
+		return row.team;
+	case JS_HUD_DEATH_STATS_ROW_DAMAGE:
+		return row.damage;
+	case JS_HUD_DEATH_STATS_ROW_HITS:
+		return row.hits;
+	default:
+		return 0;
+	}
+}
+
+extern "C" uint32_t DLLEXPORT JS_HUD_GetDeathStatsTextPacked( int text_field, int chunk )
+{
+	if( g_StaticDeathStatsSnapshot.abi_version != JS_HUD_ABI_VERSION_1 )
+		return 0;
+
+	switch( text_field )
+	{
+	case JS_HUD_DEATH_STATS_TEXT_WEAPON:
+		return PackAsciiChunk( g_StaticDeathStatsSnapshot.weapon, sizeof(g_StaticDeathStatsSnapshot.weapon), chunk );
+	case JS_HUD_DEATH_STATS_TEXT_KILLER_NAME:
+		return PackAsciiChunk( g_StaticDeathStatsSnapshot.killer_name, sizeof(g_StaticDeathStatsSnapshot.killer_name), chunk );
+	case JS_HUD_DEATH_STATS_TEXT_VICTIM_NAME:
+		return PackAsciiChunk( g_StaticDeathStatsSnapshot.victim_name, sizeof(g_StaticDeathStatsSnapshot.victim_name), chunk );
+	default:
+		return 0;
+	}
+}
+
+extern "C" uint32_t DLLEXPORT JS_HUD_GetDeathStatsRowNamePacked( int group, int slot, int chunk )
+{
+	int count = 0;
+	JS_HUD_DeathStatsRowV1 *rows = DeathStatsRowsForGroup( group, count );
+	if( !rows || slot < 0 || slot >= count || slot >= JS_HUD_MAX_DEATH_STATS_ROWS )
+		return 0;
+
+	return PackAsciiChunk( rows[slot].player_name, sizeof(rows[slot].player_name), chunk );
 }
 
 extern "C" uint32_t DLLEXPORT JS_HUD_GetDebugCountersSize( void )

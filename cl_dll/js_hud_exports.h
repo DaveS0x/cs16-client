@@ -2,10 +2,11 @@
 
 #include <stdint.h>
 
-#define JS_HUD_ABI_VERSION_1 0x00010002u
+#define JS_HUD_ABI_VERSION_1 0x00010003u
 #define JS_HUD_MAX_PLAYERS 32
 #define JS_HUD_PLAYER_NAME_BYTES 32
 #define JS_HUD_MAX_EVENTS 32
+#define JS_HUD_MAX_DEATH_STATS_ROWS JS_HUD_MAX_PLAYERS
 #define JS_HUD_EVENT_WEAPON_BYTES 24
 #define JS_HUD_EVENT_TEXT_BYTES 64
 
@@ -188,6 +189,68 @@ typedef struct JS_HUD_DebugCountersV1
 	uint32_t latest_event_seq;
 } JS_HUD_DebugCountersV1;
 
+typedef struct JS_HUD_DeathStatsRowV1
+{
+	int32_t player_id;
+	int32_t team;
+	int32_t damage;
+	int32_t hits;
+	char player_name[JS_HUD_PLAYER_NAME_BYTES];
+} JS_HUD_DeathStatsRowV1;
+
+typedef struct JS_HUD_DeathStatsSnapshotV1
+{
+	uint32_t abi_version;
+	uint32_t struct_size;
+	uint32_t row_size;
+	uint32_t seq;
+	uint32_t time_ms;
+	int32_t victim_id;
+	int32_t killer_id;
+	int32_t victim_team;
+	int32_t killer_team;
+	int32_t attacker_count;
+	int32_t victim_count;
+	char weapon[JS_HUD_EVENT_WEAPON_BYTES];
+	char killer_name[JS_HUD_PLAYER_NAME_BYTES];
+	char victim_name[JS_HUD_PLAYER_NAME_BYTES];
+	JS_HUD_DeathStatsRowV1 attackers[JS_HUD_MAX_DEATH_STATS_ROWS];
+	JS_HUD_DeathStatsRowV1 victims[JS_HUD_MAX_DEATH_STATS_ROWS];
+} JS_HUD_DeathStatsSnapshotV1;
+
+enum JS_HUD_DeathStatsMetaField
+{
+	JS_HUD_DEATH_STATS_META_SEQ = 0,
+	JS_HUD_DEATH_STATS_META_TIME_MS = 1,
+	JS_HUD_DEATH_STATS_META_VICTIM_ID = 2,
+	JS_HUD_DEATH_STATS_META_KILLER_ID = 3,
+	JS_HUD_DEATH_STATS_META_VICTIM_TEAM = 4,
+	JS_HUD_DEATH_STATS_META_KILLER_TEAM = 5,
+	JS_HUD_DEATH_STATS_META_ATTACKER_COUNT = 6,
+	JS_HUD_DEATH_STATS_META_VICTIM_COUNT = 7,
+};
+
+enum JS_HUD_DeathStatsRowGroup
+{
+	JS_HUD_DEATH_STATS_GROUP_ATTACKERS = 0,
+	JS_HUD_DEATH_STATS_GROUP_VICTIMS = 1,
+};
+
+enum JS_HUD_DeathStatsRowField
+{
+	JS_HUD_DEATH_STATS_ROW_PLAYER_ID = 0,
+	JS_HUD_DEATH_STATS_ROW_TEAM = 1,
+	JS_HUD_DEATH_STATS_ROW_DAMAGE = 2,
+	JS_HUD_DEATH_STATS_ROW_HITS = 3,
+};
+
+enum JS_HUD_DeathStatsTextField
+{
+	JS_HUD_DEATH_STATS_TEXT_WEAPON = 0,
+	JS_HUD_DEATH_STATS_TEXT_KILLER_NAME = 1,
+	JS_HUD_DEATH_STATS_TEXT_VICTIM_NAME = 2,
+};
+
 enum JS_HUD_RosterMetaField
 {
 	JS_HUD_ROSTER_META_PLAYER_COUNT = 0,
@@ -308,6 +371,24 @@ void JS_HUD_RecordTeamInfo( int player, const char *team_name, int teamnumber );
 void JS_HUD_RecordRadarPosition( int player, float x, float y, float z );
 void JS_HUD_RecordKillEvent( int killer, int victim, int headshot, const char *weapon, int assister, int rarityFlags );
 void JS_HUD_RecordRoundTextEvent( int msg_dest, const char *raw_text, const char *resolved_text );
+void JS_HUD_RecordDeathStats(
+	int seq,
+	int victim,
+	int killer,
+	const char *weapon,
+	int attackerCount,
+	const int *attackerIds,
+	const int *attackerDamage,
+	const int *attackerHits,
+	int victimCount,
+	const int *victimIds,
+	const int *victimDamage,
+	const int *victimHits
+);
+int JS_HUD_GetDeathStatsMeta( int field );
+int JS_HUD_GetDeathStatsRowInt( int group, int slot, int field );
+uint32_t JS_HUD_GetDeathStatsTextPacked( int text_field, int chunk );
+uint32_t JS_HUD_GetDeathStatsRowNamePacked( int group, int slot, int chunk );
 uint32_t JS_HUD_GetDebugCountersSize( void );
 int JS_HUD_GetDebugCounters( JS_HUD_DebugCountersV1 *out );
 const JS_HUD_DebugCountersV1 *JS_HUD_GetDebugCountersPtr( void );

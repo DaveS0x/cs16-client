@@ -88,6 +88,50 @@ static struct Column
 	}
 } g_Columns[TOTAL_COLUMNS];
 
+namespace
+{
+	const int DEATH_STATS_WIRE_VERSION = 1;
+
+	int ClampDeathStatsValue( int value, int minValue, int maxValue )
+	{
+		if( value < minValue )
+			return minValue;
+		if( value > maxValue )
+			return maxValue;
+		return value;
+	}
+
+	void ReadDeathStatsRows(
+		BufferReader &reader,
+		int wireCount,
+		int *ids,
+		int *damage,
+		int *hits,
+		int &storedCount
+	)
+	{
+		storedCount = 0;
+		wireCount = ClampDeathStatsValue( wireCount, 0, 255 );
+
+		for( int i = 0; i < wireCount; i++ )
+		{
+			const int playerId = reader.ReadByte();
+			const int rowDamage = reader.ReadShort();
+			const int rowHits = reader.ReadByte();
+			if( reader.Bad() )
+				break;
+
+			if( storedCount >= JS_HUD_MAX_DEATH_STATS_ROWS )
+				continue;
+
+			ids[storedCount] = ClampDeathStatsValue( playerId, 0, JS_HUD_MAX_PLAYERS );
+			damage[storedCount] = ClampDeathStatsValue( rowDamage, 0, 32767 );
+			hits[storedCount] = ClampDeathStatsValue( rowHits, 0, 255 );
+			storedCount++;
+		}
+	}
+}
+
 //#include "vgui_TeamFortressViewport.h"
 
 int CHudScoreboard :: Init( void )
@@ -104,6 +148,7 @@ int CHudScoreboard :: Init( void )
 	HOOK_MESSAGE( gHUD.m_Scoreboard, AssistInfo );
 	HOOK_MESSAGE( gHUD.m_Scoreboard, TeamScore );
 	HOOK_MESSAGE( gHUD.m_Scoreboard, TeamInfo );
+	HOOK_MESSAGE( gHUD.m_Scoreboard, DeathStats );
 
 	InitHUDData();
 
@@ -578,6 +623,74 @@ int CHudScoreboard :: MsgFunc_AssistInfo( const char *pszName, int iSize, void *
 		g_PlayerExtraInfo[cl].assists = assists;
 		JS_HUD_RecordAssistInfo( cl, assists );
 	}
+
+	return 1;
+}
+
+int CHudScoreboard :: MsgFunc_DeathStats( const char *pszName, int iSize, void *pbuf )
+{
+	BufferReader reader( pszName, pbuf, iSize );
+
+	const int version = reader.ReadByte();
+	if( reader.Bad() || version != DEATH_STATS_WIRE_VERSION )
+		return 1;
+
+	const int seq = reader.ReadLong();
+	const int victim = reader.ReadByte();
+	const int killer = reader.ReadByte();
+	const char *wireWeapon = reader.ReadString();
+	if( reader.Bad() )
+		return 1;
+
+	char weapon[JS_HUD_EVENT_WEAPON_BYTES];
+	strncpy( weapon, wireWeapon && wireWeapon[0] ? wireWeapon : "world", sizeof(weapon) );
+	weapon[sizeof(weapon) - 1] = '\0';
+
+	int attackerIds[JS_HUD_MAX_DEATH_STATS_ROWS];
+	int attackerDamage[JS_HUD_MAX_DEATH_STATS_ROWS];
+	int attackerHits[JS_HUD_MAX_DEATH_STATS_ROWS];
+	int victimIds[JS_HUD_MAX_DEATH_STATS_ROWS];
+	int victimDamage[JS_HUD_MAX_DEATH_STATS_ROWS];
+	int victimHits[JS_HUD_MAX_DEATH_STATS_ROWS];
+	int attackerCount = 0;
+	int victimCount = 0;
+
+	ReadDeathStatsRows(
+		reader,
+		reader.ReadByte(),
+		attackerIds,
+		attackerDamage,
+		attackerHits,
+		attackerCount
+	);
+	if( reader.Bad() )
+		return 1;
+
+	ReadDeathStatsRows(
+		reader,
+		reader.ReadByte(),
+		victimIds,
+		victimDamage,
+		victimHits,
+		victimCount
+	);
+	if( reader.Bad() )
+		return 1;
+
+	JS_HUD_RecordDeathStats(
+		seq,
+		ClampDeathStatsValue( victim, 0, JS_HUD_MAX_PLAYERS ),
+		ClampDeathStatsValue( killer, 0, JS_HUD_MAX_PLAYERS ),
+		weapon,
+		attackerCount,
+		attackerIds,
+		attackerDamage,
+		attackerHits,
+		victimCount,
+		victimIds,
+		victimDamage,
+		victimHits
+	);
 
 	return 1;
 }
