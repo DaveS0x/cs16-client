@@ -28,6 +28,7 @@
 #include "vgui_parser.h"
 #include "draw_util.h"
 #include "com_weapons.h"
+#include "js_hud_exports.h"
 //#include "vgui_TeamFortressViewport.h"
 
 extern float *GetClientColor( int clientIndex );
@@ -263,6 +264,18 @@ struct
 	},
 };
 
+static bool IsTeamSayTextFormat( const char *fmt )
+{
+	return fmt && (
+		!strcmp( fmt, "#Cstrike_Chat_CT" ) ||
+		!strcmp( fmt, "#Cstrike_Chat_T" ) ||
+		!strcmp( fmt, "#Cstrike_Chat_CT_Dead" ) ||
+		!strcmp( fmt, "#Cstrike_Chat_T_Dead" ) ||
+		!strcmp( fmt, "#Cstrike_Chat_CT_Loc" ) ||
+		!strcmp( fmt, "#Cstrike_Chat_T_Loc" )
+	);
+}
+
 int CHudSayText :: MsgFunc_SayText( const char *pszName, int iSize, void *pbuf )
 {
 	BufferReader reader( pszName, pbuf, iSize );
@@ -366,6 +379,25 @@ int CHudSayText :: MsgFunc_SayText( const char *pszName, int iSize, void *pbuf )
 	}
 	
 	SayTextPrint( dst, strlen(dst), client_index );
+
+	if( fmt && !strcmp( fmt, "#Cstrike_Name_Change" ) )
+	{
+		JS_HUD_RecordChatEvent( 0, JS_HUD_CHAT_FLAG_SYSTEM, "Server", dst );
+	}
+	else
+	{
+		const char *message = dst;
+		if( numArgs >= 3 && swap && argv[1] && argv[1][0] )
+			message = argv[1];
+		else if( numArgs >= 2 && argv[1] && argv[1][0] )
+			message = argv[1];
+		else if( numArgs >= 1 && !replaceFirstArgToName && argv[0] && argv[0][0] )
+			message = argv[0];
+
+		const char *speaker = replaceFirstArgToName && argv[0] && argv[0][0] ? argv[0] : nullptr;
+		const int flags = IsTeamSayTextFormat( fmt ) ? JS_HUD_CHAT_FLAG_TEAM : 0;
+		JS_HUD_RecordChatEvent( client_index, flags, speaker, message );
+	}
 
 	delete[] fmt;
 

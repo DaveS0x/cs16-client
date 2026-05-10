@@ -235,7 +235,9 @@ int CHudTextMessage::MsgFunc_TextMsg( const char *pszName, int iSize, void *pbuf
 	case HUD_PRINTTALK:
 		psz[0] = 2; // mark, so SayTextPrint will color it
 		snprintf( psz+1, MAX_TEXTMSG_STRING-1, msg_text, szBuf[1], szBuf[2], szBuf[3], szBuf[4] );
-		gHUD.m_SayText.SayTextPrint( ConvertCRtoNL( psz ), 128 );
+		ConvertCRtoNL( psz );
+		JS_HUD_RecordChatEvent( 0, JS_HUD_CHAT_FLAG_SYSTEM, "Server", psz + 1 );
+		gHUD.m_SayText.SayTextPrint( psz, 128 );
 		break;
 
 	case HUD_PRINTCONSOLE:
@@ -248,7 +250,14 @@ int CHudTextMessage::MsgFunc_TextMsg( const char *pszName, int iSize, void *pbuf
 		snprintf( psz + 1, MAX_TEXTMSG_STRING-1, szBuf[1], szBuf[2], szBuf[3], szBuf[4] );
 
 		clientIdx = atoi( szBuf[0] );
-		gHUD.m_SayText.SayTextPrint( ConvertCRtoNL( psz ), 128, clientIdx );
+		ConvertCRtoNL( psz );
+		JS_HUD_RecordChatEvent(
+			clientIdx,
+			JS_HUD_CHAT_FLAG_RADIO,
+			szBuf[2][0] ? szBuf[2] : nullptr,
+			szBuf[4][0] ? szBuf[4] : ( szBuf[3][0] ? szBuf[3] : psz + 1 )
+		);
+		gHUD.m_SayText.SayTextPrint( psz, 128, clientIdx );
 		break;
 	}
 

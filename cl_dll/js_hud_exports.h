@@ -2,7 +2,7 @@
 
 #include <stdint.h>
 
-#define JS_HUD_ABI_VERSION_1 0x00010003u
+#define JS_HUD_ABI_VERSION_1 0x00010005u
 #define JS_HUD_MAX_PLAYERS 32
 #define JS_HUD_PLAYER_NAME_BYTES 32
 #define JS_HUD_MAX_EVENTS 32
@@ -130,6 +130,21 @@ enum JS_HUD_EventKind
 	JS_HUD_EVENT_NONE  = 0,
 	JS_HUD_EVENT_KILL  = 1,
 	JS_HUD_EVENT_ROUND = 2,
+	JS_HUD_EVENT_CHAT  = 3,
+	JS_HUD_EVENT_VOICE = 4,
+};
+
+enum JS_HUD_ChatEventFlags
+{
+	JS_HUD_CHAT_FLAG_TEAM   = 1u << 0,
+	JS_HUD_CHAT_FLAG_RADIO  = 1u << 1,
+	JS_HUD_CHAT_FLAG_SYSTEM = 1u << 2,
+};
+
+enum JS_HUD_VoiceEventState
+{
+	JS_HUD_VOICE_STOPPED = 0,
+	JS_HUD_VOICE_TALKING = 1,
 };
 
 enum JS_HUD_RoundEventState
@@ -371,6 +386,8 @@ void JS_HUD_RecordTeamInfo( int player, const char *team_name, int teamnumber );
 void JS_HUD_RecordRadarPosition( int player, float x, float y, float z );
 void JS_HUD_RecordKillEvent( int killer, int victim, int headshot, const char *weapon, int assister, int rarityFlags );
 void JS_HUD_RecordRoundTextEvent( int msg_dest, const char *raw_text, const char *resolved_text );
+void JS_HUD_RecordChatEvent( int player, int flags, const char *player_name, const char *text );
+void JS_HUD_RecordVoiceStatus( int entindex, int talking );
 void JS_HUD_RecordDeathStats(
 	int seq,
 	int victim,

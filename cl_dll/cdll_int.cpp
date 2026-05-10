@@ -30,6 +30,7 @@
 #include "render_api.h"
 #include "mobility_int.h"
 #include "vgui_parser.h"
+#include "js_hud_exports.h"
 
 cl_enginefunc_t		gEngfuncs  = { };
 render_api_t		gRenderAPI = { };
@@ -290,6 +291,7 @@ Called when a player starts or stops talking.
 void DLLEXPORT HUD_VoiceStatus(int entindex, qboolean bTalking)
 {
 	// gHUD.m_Radio.Voice( entindex, bTalking );
+	JS_HUD_RecordVoiceStatus( entindex, bTalking ? 1 : 0 );
 
 	if ( entindex >= 0 && entindex < gEngfuncs.GetMaxClients() )
 	{
@@ -527,4 +529,3 @@ public:
 };
 
 EXPOSE_SINGLE_INTERFACE(CClientExports, IGameClientExports, GAMECLIENTEXPORTS_INTERFACE_VERSION)
-

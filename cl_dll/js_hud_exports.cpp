@@ -52,6 +52,7 @@ namespace
 	uint32_t g_RadarCount = 0;
 	uint32_t g_DeathMsgCount = 0;
 	uint32_t g_RoundMsgCount = 0;
+	int g_VoiceStatusState[JS_HUD_MAX_PLAYERS + 1];
 
 	inline int Clamp( int value, int minValue, int maxValue )
 	{
@@ -189,6 +190,40 @@ namespace
 
 		strncpy( dst, src, dstSize );
 		dst[dstSize - 1] = 0;
+	}
+
+	inline void CopyCleanChatString( char *dst, size_t dstSize, const char *src )
+	{
+		if( !dst || dstSize == 0 )
+			return;
+
+		dst[0] = 0;
+		if( !src )
+			return;
+
+		size_t out = 0;
+		for( const unsigned char *p = (const unsigned char*)src; *p && out + 1 < dstSize; ++p )
+		{
+			const unsigned char ch = *p;
+			if( ch >= 1 && ch <= 4 )
+				continue;
+
+			if( ch == '\r' || ch == '\n' || ch == '\t' )
+			{
+				if( out > 0 && dst[out - 1] != ' ' )
+					dst[out++] = ' ';
+				continue;
+			}
+
+			if( ch < 32 || ch > 126 )
+				continue;
+
+			dst[out++] = (char)ch;
+		}
+
+		while( out > 0 && dst[out - 1] == ' ' )
+			out--;
+		dst[out] = 0;
 	}
 
 	inline uint32_t PackAsciiChunk( const char *src, size_t srcSize, int chunk )
@@ -1009,6 +1044,7 @@ extern "C" uint32_t DLLEXPORT JS_HUD_GetEventTextPacked( int slot, int text_fiel
 extern "C" void DLLEXPORT JS_HUD_ResetEvents( void )
 {
 	memset( g_EventRing, 0, sizeof(g_EventRing) );
+	memset( g_VoiceStatusState, 0, sizeof(g_VoiceStatusState) );
 	if( g_NextEventSeq == 0 )
 		g_NextEventSeq = 1;
 }
@@ -1097,6 +1133,61 @@ extern "C" void DLLEXPORT JS_HUD_RecordRoundTextEvent( int msg_dest, const char 
 	JS_HUD_EventV1 *event = PushEvent( JS_HUD_EVENT_ROUND );
 	event->state = state;
 	snprintf( event->text, sizeof(event->text), "%s", resolved_text && resolved_text[0] ? resolved_text : ( raw_text ? raw_text : "" ) );
+}
+
+extern "C" void DLLEXPORT JS_HUD_RecordChatEvent( int player, int flags, const char *player_name, const char *text )
+{
+	char cleanText[JS_HUD_EVENT_TEXT_BYTES];
+	CopyCleanChatString( cleanText, sizeof(cleanText), text );
+	if( !cleanText[0] )
+		return;
+
+	const int playerId = Clamp( player, 0, JS_HUD_MAX_PLAYERS );
+	const int chatFlags = flags & ( JS_HUD_CHAT_FLAG_TEAM | JS_HUD_CHAT_FLAG_RADIO | JS_HUD_CHAT_FLAG_SYSTEM );
+	const char *fallback = ( chatFlags & JS_HUD_CHAT_FLAG_SYSTEM ) ? "Server" :
+		( ( chatFlags & JS_HUD_CHAT_FLAG_RADIO ) ? "Radio" : "Player" );
+
+	char cleanName[JS_HUD_PLAYER_NAME_BYTES];
+	CopyCleanChatString(
+		cleanName,
+		sizeof(cleanName),
+		player_name && player_name[0] ? player_name : PlayerNameOrFallback( playerId, fallback )
+	);
+	if( !cleanName[0] )
+		CopyFixedString( cleanName, sizeof(cleanName), fallback );
+
+	JS_HUD_EventV1 *event = PushEvent( JS_HUD_EVENT_CHAT );
+	event->state = chatFlags;
+	event->killer_id = playerId;
+	event->killer_team = NormalizeMirrorPlayerTeam( playerId );
+	CopyFixedString( event->killer_name, sizeof(event->killer_name), cleanName );
+	CopyFixedString( event->text, sizeof(event->text), cleanText );
+}
+
+extern "C" void DLLEXPORT JS_HUD_RecordVoiceStatus( int entindex, int talking )
+{
+	if( entindex == -2 )
+		return;
+
+	const bool isLocal = entindex == -1;
+	const int playerId = isLocal ? GetLocalPlayerIndex() : Clamp( entindex, 0, JS_HUD_MAX_PLAYERS );
+	if( !isLocal && ( playerId <= 0 || playerId > JS_HUD_MAX_PLAYERS ) )
+		return;
+
+	const int slot = isLocal ? 0 : playerId;
+	const int nextState = talking ? JS_HUD_VOICE_TALKING : JS_HUD_VOICE_STOPPED;
+	if( g_VoiceStatusState[slot] == nextState )
+		return;
+
+	g_VoiceStatusState[slot] = nextState;
+
+	JS_HUD_EventV1 *event = PushEvent( JS_HUD_EVENT_VOICE );
+	event->state = nextState;
+	event->killer_id = playerId;
+	event->killer_team = NormalizeMirrorPlayerTeam( playerId );
+	event->headshot = isLocal ? 1 : 0;
+	CopyFixedString( event->killer_name, sizeof(event->killer_name), PlayerNameOrFallback( playerId, isLocal ? "You" : "Player" ) );
+	CopyFixedString( event->text, sizeof(event->text), nextState == JS_HUD_VOICE_TALKING ? "talking" : "stopped" );
 }
 
 extern "C" void DLLEXPORT JS_HUD_RecordDeathStats(
