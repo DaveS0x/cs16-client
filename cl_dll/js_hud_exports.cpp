@@ -9,7 +9,7 @@
 #include <stdio.h>
 #include <string.h>
 
-static_assert(sizeof(JS_HUD_SnapshotV1) == 72, "JS_HUD_SnapshotV1 layout changed");
+static_assert(sizeof(JS_HUD_SnapshotV1) == 76, "JS_HUD_SnapshotV1 layout changed");
 static_assert(sizeof(JS_HUD_CrosshairStateV1) == 56, "JS_HUD_CrosshairStateV1 layout changed");
 static_assert(sizeof(JS_HUD_PlayerRowV1) == 84, "JS_HUD_PlayerRowV1 layout changed");
 static_assert(sizeof(JS_HUD_RosterSnapshotV1) == 2736, "JS_HUD_RosterSnapshotV1 layout changed");
@@ -592,6 +592,7 @@ extern "C" int DLLEXPORT JS_HUD_GetSnapshot( JS_HUD_SnapshotV1 *out )
 	out->round_timer_active = roundTimerActive ? 1 : 0;
 	out->bomb_time_sec = bombTime;
 	out->bomb_timer_active = bombTimerActive ? 1 : 0;
+	out->weapon_bits = (uint32_t)gHUD.m_iWeaponBits;
 
 	return 1;
 }
@@ -618,6 +619,11 @@ extern "C" int DLLEXPORT JS_HUD_GetWeapon( void )
 	int reserve = 0;
 	ReadWeaponState( weaponId, clip, reserve );
 	return weaponId;
+}
+
+extern "C" uint32_t DLLEXPORT JS_HUD_GetWeaponBits( void )
+{
+	return (uint32_t)gHUD.m_iWeaponBits;
 }
 
 extern "C" int DLLEXPORT JS_HUD_GetClip( void )
