@@ -10,9 +10,9 @@
 #include <string.h>
 
 static_assert(sizeof(JS_HUD_SnapshotV1) == 76, "JS_HUD_SnapshotV1 layout changed");
-static_assert(sizeof(JS_HUD_CrosshairStateV1) == 56, "JS_HUD_CrosshairStateV1 layout changed");
-static_assert(sizeof(JS_HUD_PlayerRowV1) == 84, "JS_HUD_PlayerRowV1 layout changed");
-static_assert(sizeof(JS_HUD_RosterSnapshotV1) == 2736, "JS_HUD_RosterSnapshotV1 layout changed");
+static_assert(sizeof(JS_HUD_CrosshairStateV1) == 64, "JS_HUD_CrosshairStateV1 layout changed");
+static_assert(sizeof(JS_HUD_PlayerRowV1) == 88, "JS_HUD_PlayerRowV1 layout changed");
+static_assert(sizeof(JS_HUD_RosterSnapshotV1) == 2864, "JS_HUD_RosterSnapshotV1 layout changed");
 static_assert(sizeof(JS_HUD_EventV1) == 232, "JS_HUD_EventV1 layout changed");
 static_assert(sizeof(JS_HUD_DebugCountersV1) == 40, "JS_HUD_DebugCountersV1 layout changed");
 static_assert(sizeof(JS_HUD_DeathStatsRowV1) == 48, "JS_HUD_DeathStatsRowV1 layout changed");
@@ -43,6 +43,7 @@ namespace
 	JS_HUD_DebugCountersV1 g_StaticDebugCounters;
 	JS_HUD_DeathStatsSnapshotV1 g_StaticDeathStatsSnapshot;
 	CrosshairDynamicsCache g_CrosshairExportCache = { 0.0f, 0, 0.0f };
+	constexpr int OBS_IN_EYE_MODE = 4;
 	uint32_t g_NextEventSeq = 1;
 	HudRosterMirrorPlayer g_RosterMirror[MAX_PLAYERS + 1];
 	uint32_t g_RosterSnapshotCount = 0;
@@ -689,8 +690,9 @@ extern "C" int DLLEXPORT JS_HUD_GetCrosshairState( JS_HUD_CrosshairStateV1 *out 
 	const bool scoped = gHUD.m_iFOV > 0 && gHUD.m_iFOV <= 40;
 	const bool sniper = IsSniperCrosshairWeapon( weaponId );
 	const bool shieldDrawn = ( g_iWeaponFlags & WPNSTATE_SHIELD_DRAWN ) != 0;
+	const bool spectatingTarget = g_iUser1 == OBS_IN_EYE_MODE && g_iUser2 > 0 && g_iUser2 <= MAX_PLAYERS;
 	const bool valid = hasWeapon && weaponId > 0;
-	const bool visible = valid && alive && !scoped && !sniper && !shieldDrawn;
+	const bool visible = valid && ( alive || spectatingTarget ) && !scoped && !sniper && !shieldDrawn;
 
 	uint32_t flags = 0;
 	if( valid )
@@ -705,6 +707,8 @@ extern "C" int DLLEXPORT JS_HUD_GetCrosshairState( JS_HUD_CrosshairStateV1 *out 
 		flags |= JS_HUD_CROSSHAIR_FLAG_SHIELD_DRAWN;
 	if( alive )
 		flags |= JS_HUD_CROSSHAIR_FLAG_ALIVE;
+	if( spectatingTarget )
+		flags |= JS_HUD_CROSSHAIR_FLAG_SPECTATING_TARGET;
 
 	out->abi_version = JS_HUD_ABI_VERSION_1;
 	out->struct_size = (uint32_t)sizeof(JS_HUD_CrosshairStateV1);
@@ -716,6 +720,8 @@ extern "C" int DLLEXPORT JS_HUD_GetCrosshairState( JS_HUD_CrosshairStateV1 *out 
 	out->weapon_flags = g_iWeaponFlags;
 	out->fov = gHUD.m_iFOV;
 	out->player_speed = g_flPlayerSpeed;
+	out->observer_mode = g_iUser1;
+	out->observer_target_id = spectatingTarget ? g_iUser2 : 0;
 
 	if( valid )
 	{
@@ -793,6 +799,10 @@ extern "C" int DLLEXPORT JS_HUD_GetRosterSnapshot( JS_HUD_RosterSnapshotV1 *out 
 		row.assists = mirror.seen_assist ? mirror.assists : extra.assists;
 		row.ping = info.ping < 0 ? 0 : info.ping;
 		row.money = extra.sb_account >= 0 ? Clamp( extra.sb_account, 0, 16000 ) : 0;
+		const int rowHealth = isLocal
+			? Clamp( gHUD.m_Health.m_iHealth, 0, 100 )
+			: ( extra.sb_health >= 0 ? Clamp( extra.sb_health, 0, 100 ) : ( isAlive ? -1 : 0 ) );
+		row.health = rowHealth >= 0 ? rowHealth : 0;
 		row.flags = 0;
 		if( isLocal )
 			row.flags |= JS_HUD_PLAYER_FLAG_LOCAL;
@@ -802,6 +812,8 @@ extern "C" int DLLEXPORT JS_HUD_GetRosterSnapshot( JS_HUD_RosterSnapshotV1 *out 
 			row.flags |= JS_HUD_PLAYER_FLAG_VALID_ORIGIN;
 		if( validRadar )
 			row.flags |= JS_HUD_PLAYER_FLAG_VALID_RADAR;
+		if( rowHealth >= 0 )
+			row.flags |= JS_HUD_PLAYER_FLAG_VALID_HEALTH;
 
 		row.origin_x = origin.x;
 		row.origin_y = origin.y;
@@ -893,6 +905,8 @@ extern "C" int DLLEXPORT JS_HUD_GetRosterPlayerInt( int slot, int field )
 		return (int)row.flags;
 	case JS_HUD_ROSTER_PLAYER_ASSISTS:
 		return row.assists;
+	case JS_HUD_ROSTER_PLAYER_HEALTH:
+		return row.health;
 	default:
 		return 0;
 	}

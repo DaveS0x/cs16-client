@@ -2,7 +2,7 @@
 
 #include <stdint.h>
 
-#define JS_HUD_ABI_VERSION_1 0x00010006u
+#define JS_HUD_ABI_VERSION_1 0x00010008u
 #define JS_HUD_MAX_PLAYERS 32
 #define JS_HUD_PLAYER_NAME_BYTES 32
 #define JS_HUD_MAX_EVENTS 32
@@ -63,6 +63,7 @@ enum JS_HUD_CrosshairFlags
 	JS_HUD_CROSSHAIR_FLAG_SNIPER       = 1u << 3,
 	JS_HUD_CROSSHAIR_FLAG_SHIELD_DRAWN = 1u << 4,
 	JS_HUD_CROSSHAIR_FLAG_ALIVE        = 1u << 5,
+	JS_HUD_CROSSHAIR_FLAG_SPECTATING_TARGET = 1u << 6,
 };
 
 typedef struct JS_HUD_CrosshairStateV1
@@ -81,6 +82,8 @@ typedef struct JS_HUD_CrosshairStateV1
 	float recoil_gap;
 	float spread_delta;
 	float player_speed;
+	int32_t observer_mode;
+	int32_t observer_target_id;
 } JS_HUD_CrosshairStateV1;
 
 enum JS_HUD_PlayerFlags
@@ -89,6 +92,7 @@ enum JS_HUD_PlayerFlags
 	JS_HUD_PLAYER_FLAG_ALIVE        = 1u << 1,
 	JS_HUD_PLAYER_FLAG_VALID_ORIGIN = 1u << 2,
 	JS_HUD_PLAYER_FLAG_VALID_RADAR  = 1u << 3,
+	JS_HUD_PLAYER_FLAG_VALID_HEALTH = 1u << 4,
 };
 
 typedef struct JS_HUD_PlayerRowV1
@@ -99,6 +103,7 @@ typedef struct JS_HUD_PlayerRowV1
 	int32_t deaths;
 	int32_t ping;
 	int32_t money;
+	int32_t health;
 	uint32_t flags;
 	float origin_x;
 	float origin_y;
@@ -290,6 +295,7 @@ enum JS_HUD_RosterPlayerIntField
 	JS_HUD_ROSTER_PLAYER_MONEY,
 	JS_HUD_ROSTER_PLAYER_FLAGS,
 	JS_HUD_ROSTER_PLAYER_ASSISTS,
+	JS_HUD_ROSTER_PLAYER_HEALTH,
 };
 
 enum JS_HUD_RosterPlayerFloatField
