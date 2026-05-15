@@ -44,6 +44,21 @@ namespace
 	JS_HUD_DeathStatsSnapshotV1 g_StaticDeathStatsSnapshot;
 	CrosshairDynamicsCache g_CrosshairExportCache = { 0.0f, 0, 0.0f };
 	constexpr int OBS_IN_EYE_MODE = 4;
+	struct JS_HUD_ObserverPovMirror
+	{
+		int active;
+		int target_id;
+		int team;
+		int alive;
+		int health;
+		int armor;
+		int armor_type;
+		int has_helmet;
+		int weapon_id;
+		int clip;
+		int reserve;
+		uint32_t weapon_bits;
+	} g_StaticObserverPov = {};
 	uint32_t g_NextEventSeq = 1;
 	HudRosterMirrorPlayer g_RosterMirror[MAX_PLAYERS + 1];
 	uint32_t g_RosterSnapshotCount = 0;
@@ -128,6 +143,11 @@ namespace
 	inline int GetAlive()
 	{
 		return gHUD.m_fPlayerDead ? 0 : 1;
+	}
+
+	inline bool IsSpectatingInEyeTarget()
+	{
+		return g_iUser1 == OBS_IN_EYE_MODE && g_iUser2 > 0 && g_iUser2 <= MAX_PLAYERS;
 	}
 
 	inline int GetBuyzoneHint()
@@ -443,8 +463,10 @@ namespace
 		clip = 0;
 		reserve = 0;
 
-		// Prefer active predicted weapon from local state; fallback to HUD cache.
-		if( g_finalstate )
+		// Prefer active predicted weapon from local state; in-eye spectating needs
+		// the HUD weapon cache because g_finalstate still describes the dead local player.
+		const bool usePredictedLocalState = !IsSpectatingInEyeTarget();
+		if( usePredictedLocalState && g_finalstate )
 		{
 			const int predictedWeaponId = g_finalstate->client.m_iId;
 			if( predictedWeaponId > 0 && predictedWeaponId < MAX_WEAPONS )
@@ -465,7 +487,7 @@ namespace
 		}
 
 		bool hasClip = false;
-		if( g_finalstate && weaponId < 32 )
+		if( usePredictedLocalState && g_finalstate && weaponId < 32 )
 		{
 			const weapon_data_t &wd = g_finalstate->weapondata[weaponId];
 			if( wd.m_iId == weaponId )
@@ -690,7 +712,7 @@ extern "C" int DLLEXPORT JS_HUD_GetCrosshairState( JS_HUD_CrosshairStateV1 *out 
 	const bool scoped = gHUD.m_iFOV > 0 && gHUD.m_iFOV <= 40;
 	const bool sniper = IsSniperCrosshairWeapon( weaponId );
 	const bool shieldDrawn = ( g_iWeaponFlags & WPNSTATE_SHIELD_DRAWN ) != 0;
-	const bool spectatingTarget = g_iUser1 == OBS_IN_EYE_MODE && g_iUser2 > 0 && g_iUser2 <= MAX_PLAYERS;
+	const bool spectatingTarget = IsSpectatingInEyeTarget();
 	const bool valid = hasWeapon && weaponId > 0;
 	const bool visible = valid && ( alive || spectatingTarget ) && !scoped && !sniper && !shieldDrawn;
 
@@ -744,6 +766,80 @@ extern "C" int DLLEXPORT JS_HUD_GetCrosshairState( JS_HUD_CrosshairStateV1 *out 
 extern "C" const JS_HUD_CrosshairStateV1 *DLLEXPORT JS_HUD_GetCrosshairStatePtr( void )
 {
 	return JS_HUD_GetCrosshairState( &g_StaticCrosshairState ) ? &g_StaticCrosshairState : nullptr;
+}
+
+extern "C" int DLLEXPORT JS_HUD_BuildObserverPov( void )
+{
+	memset( &g_StaticObserverPov, 0, sizeof(g_StaticObserverPov) );
+
+	if( !IsSpectatingInEyeTarget() )
+		return 0;
+
+	const int targetId = g_iUser2;
+	const extra_player_info_t &extra = g_PlayerExtraInfo[targetId];
+	const int team = NormalizeMirrorPlayerTeam( targetId );
+	const bool alive = team != 0 && !extra.dead;
+	if( !alive )
+		return 0;
+
+	int weaponId = 0;
+	int clip = 0;
+	int reserve = 0;
+	ReadWeaponState( weaponId, clip, reserve );
+
+	const int health = extra.health > 0
+		? extra.health
+		: ( extra.sb_health >= 0 ? extra.sb_health : 0 );
+	const int armor = extra.sb_armor >= 0 ? extra.sb_armor : 0;
+	const int armorType = extra.sb_armor_type > 0 ? 1 : 0;
+
+	g_StaticObserverPov.active = 1;
+	g_StaticObserverPov.target_id = targetId;
+	g_StaticObserverPov.team = team;
+	g_StaticObserverPov.alive = 1;
+	g_StaticObserverPov.health = Clamp( health, 0, 100 );
+	g_StaticObserverPov.armor = Clamp( armor, 0, 100 );
+	g_StaticObserverPov.armor_type = armorType;
+	g_StaticObserverPov.has_helmet = armorType == 1 ? 1 : 0;
+	g_StaticObserverPov.weapon_id = Clamp( weaponId, 0, MAX_WEAPONS - 1 );
+	g_StaticObserverPov.clip = Clamp( clip, 0, 999 );
+	g_StaticObserverPov.reserve = Clamp( reserve, 0, 999 );
+	g_StaticObserverPov.weapon_bits = (uint32_t)gHUD.m_iWeaponBits;
+
+	return 1;
+}
+
+extern "C" int DLLEXPORT JS_HUD_GetObserverPovInt( int field )
+{
+	switch( field )
+	{
+	case JS_HUD_OBSERVER_POV_ACTIVE:
+		return g_StaticObserverPov.active;
+	case JS_HUD_OBSERVER_POV_TARGET_ID:
+		return g_StaticObserverPov.target_id;
+	case JS_HUD_OBSERVER_POV_TEAM:
+		return g_StaticObserverPov.team;
+	case JS_HUD_OBSERVER_POV_ALIVE:
+		return g_StaticObserverPov.alive;
+	case JS_HUD_OBSERVER_POV_HEALTH:
+		return g_StaticObserverPov.health;
+	case JS_HUD_OBSERVER_POV_ARMOR:
+		return g_StaticObserverPov.armor;
+	case JS_HUD_OBSERVER_POV_ARMOR_TYPE:
+		return g_StaticObserverPov.armor_type;
+	case JS_HUD_OBSERVER_POV_HAS_HELMET:
+		return g_StaticObserverPov.has_helmet;
+	case JS_HUD_OBSERVER_POV_WEAPON_ID:
+		return g_StaticObserverPov.weapon_id;
+	case JS_HUD_OBSERVER_POV_CLIP:
+		return g_StaticObserverPov.clip;
+	case JS_HUD_OBSERVER_POV_RESERVE:
+		return g_StaticObserverPov.reserve;
+	case JS_HUD_OBSERVER_POV_WEAPON_BITS:
+		return (int)g_StaticObserverPov.weapon_bits;
+	default:
+		return 0;
+	}
 }
 
 extern "C" uint32_t DLLEXPORT JS_HUD_GetRosterSnapshotSize( void )

@@ -54,6 +54,7 @@ int CHudSpectatorGui::Init()
 
 	HOOK_MESSAGE( gHUD.m_SpectatorGui, SpecHealth );
 	HOOK_MESSAGE( gHUD.m_SpectatorGui, SpecHealth2 );
+	HOOK_MESSAGE( gHUD.m_SpectatorGui, SpecArmor2 );
 
 	HOOK_COMMAND( gHUD.m_SpectatorGui, "_spec_toggle_menu", ToggleSpectatorMenu );
 	HOOK_COMMAND( gHUD.m_SpectatorGui, "_spec_toggle_menu_options", ToggleSpectatorMenuOptions );
@@ -330,6 +331,23 @@ int CHudSpectatorGui::MsgFunc_SpecHealth2(const char *pszName, int iSize, void *
 
 	g_PlayerExtraInfo[client].health = health;
 	gHUD.m_Health.m_iPlayerLastPointedAt = g_iUser2;
+
+	return 1;
+}
+
+int CHudSpectatorGui::MsgFunc_SpecArmor2(const char *pszName, int iSize, void *buf)
+{
+	BufferReader reader( pszName, buf, iSize );
+
+	int client = reader.ReadByte();
+	int armor = reader.ReadByte();
+	int armorType = reader.ReadByte();
+
+	if( client > 0 && client <= MAX_PLAYERS )
+	{
+		g_PlayerExtraInfo[client].sb_armor = armor;
+		g_PlayerExtraInfo[client].sb_armor_type = armorType;
+	}
 
 	return 1;
 }

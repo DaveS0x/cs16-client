@@ -298,6 +298,22 @@ enum JS_HUD_RosterPlayerIntField
 	JS_HUD_ROSTER_PLAYER_HEALTH,
 };
 
+enum JS_HUD_ObserverPovIntField
+{
+	JS_HUD_OBSERVER_POV_ACTIVE = 0,
+	JS_HUD_OBSERVER_POV_TARGET_ID,
+	JS_HUD_OBSERVER_POV_TEAM,
+	JS_HUD_OBSERVER_POV_ALIVE,
+	JS_HUD_OBSERVER_POV_HEALTH,
+	JS_HUD_OBSERVER_POV_ARMOR,
+	JS_HUD_OBSERVER_POV_ARMOR_TYPE,
+	JS_HUD_OBSERVER_POV_HAS_HELMET,
+	JS_HUD_OBSERVER_POV_WEAPON_ID,
+	JS_HUD_OBSERVER_POV_CLIP,
+	JS_HUD_OBSERVER_POV_RESERVE,
+	JS_HUD_OBSERVER_POV_WEAPON_BITS,
+};
+
 enum JS_HUD_RosterPlayerFloatField
 {
 	JS_HUD_ROSTER_PLAYER_ORIGIN_X = 0,
@@ -379,6 +395,8 @@ int JS_HUD_GetRosterMeta( int field );
 int JS_HUD_GetRosterPlayerInt( int slot, int field );
 float JS_HUD_GetRosterPlayerFloat( int slot, int field );
 uint32_t JS_HUD_GetRosterPlayerNamePacked( int slot, int chunk );
+int JS_HUD_BuildObserverPov( void );
+int JS_HUD_GetObserverPovInt( int field );
 uint32_t JS_HUD_GetEventBufferSize( void );
 int JS_HUD_GetEvents( uint32_t after_seq, JS_HUD_EventBufferV1 *out );
 const JS_HUD_EventBufferV1 *JS_HUD_GetEventsPtr( uint32_t after_seq );

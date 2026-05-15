@@ -184,6 +184,8 @@ void CHudScoreboard :: InitHUDData( void )
 	for ( int i = 1; i <= MAX_PLAYERS; i++ )
 	{
 		g_PlayerExtraInfo[i].sb_health = -1;
+		g_PlayerExtraInfo[i].sb_armor = -1;
+		g_PlayerExtraInfo[i].sb_armor_type = -1;
 		g_PlayerExtraInfo[i].sb_account = -1;
 	}
 

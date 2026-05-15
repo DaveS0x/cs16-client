@@ -483,6 +483,8 @@ struct extra_player_info_t
 	bool talking;
 	char location[MAX_LOCATION_NAME];
 	int sb_health;
+	int sb_armor;
+	int sb_armor_type;
 	int sb_account;
 	qboolean has_defuse_kit;
 };
@@ -604,6 +606,7 @@ public:
 	CHudMsgFunc(Battery);
 	CHudMsgFunc(ArmorType);
 	inline int GetArmorValue() const { return m_iBat; }
+	inline bool HasHelmet() const { return m_enArmorType == VestHelm; }
 	
 private:
 	enum armortype_t {
@@ -932,6 +935,7 @@ public:
 
 	CHudMsgFunc( SpecHealth );
 	CHudMsgFunc( SpecHealth2 );
+	CHudMsgFunc( SpecArmor2 );
 
 	CHudUserCmd( ToggleSpectatorMenu );
 	CHudUserCmd( ToggleSpectatorMenuOptions );
