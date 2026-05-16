@@ -13,7 +13,7 @@ static_assert(sizeof(JS_HUD_SnapshotV1) == 76, "JS_HUD_SnapshotV1 layout changed
 static_assert(sizeof(JS_HUD_CrosshairStateV1) == 64, "JS_HUD_CrosshairStateV1 layout changed");
 static_assert(sizeof(JS_HUD_PlayerRowV1) == 88, "JS_HUD_PlayerRowV1 layout changed");
 static_assert(sizeof(JS_HUD_RosterSnapshotV1) == 2864, "JS_HUD_RosterSnapshotV1 layout changed");
-static_assert(sizeof(JS_HUD_EventV1) == 232, "JS_HUD_EventV1 layout changed");
+static_assert(sizeof(JS_HUD_EventV1) == 360, "JS_HUD_EventV1 layout changed");
 static_assert(sizeof(JS_HUD_DebugCountersV1) == 40, "JS_HUD_DebugCountersV1 layout changed");
 static_assert(sizeof(JS_HUD_DeathStatsRowV1) == 48, "JS_HUD_DeathStatsRowV1 layout changed");
 static_assert(sizeof(JS_HUD_DeathStatsSnapshotV1) == 3204, "JS_HUD_DeathStatsSnapshotV1 layout changed");
