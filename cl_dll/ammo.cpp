@@ -859,6 +859,17 @@ void CHudAmmo::UserCmd_Close(void)
 }
 
 
+static void FastSwitchSelectWeapon( WEAPON *pWeapon )
+{
+	ServerCmd( pWeapon->szName );
+	g_weaponselect = pWeapon->iId;
+	g_weaponselect_frames = 3;
+	gpLastSel = pWeapon;
+	gpActiveSel = NULL;
+	PlaySound( "common/wpn_select.wav", 1 );
+}
+
+
 // Selects the next item in the weapon menu
 void CHudAmmo::UserCmd_NextWeapon(void)
 {
@@ -886,6 +897,12 @@ void CHudAmmo::UserCmd_NextWeapon(void)
 
 				if ( wsp /*&& gWR.HasAmmo(wsp)*/ )
 				{
+					if ( m_pHud_FastSwitch->value != 0.0f )
+					{
+						FastSwitchSelectWeapon( wsp );
+						return;
+					}
+
 					gpActiveSel = wsp;
 					return;
 				}
@@ -927,6 +944,12 @@ void CHudAmmo::UserCmd_PrevWeapon(void)
 
 				if ( wsp /*&& gWR.HasAmmo(wsp)*/ )
 				{
+					if ( m_pHud_FastSwitch->value != 0.0f )
+					{
+						FastSwitchSelectWeapon( wsp );
+						return;
+					}
+
 					gpActiveSel = wsp;
 					return;
 				}
