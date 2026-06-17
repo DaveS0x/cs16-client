@@ -138,6 +138,13 @@ enum JS_HUD_EventKind
 	JS_HUD_EVENT_ROUND = 2,
 	JS_HUD_EVENT_CHAT  = 3,
 	JS_HUD_EVENT_VOICE = 4,
+	JS_HUD_EVENT_HIT   = 5,
+};
+
+enum JS_HUD_HitEventFlags
+{
+	JS_HUD_HIT_FLAG_KILL  = 1u << 0, // this hit was the killing blow
+	JS_HUD_HIT_FLAG_ARMOR = 1u << 1, // damage was partly absorbed by armor (reserved)
 };
 
 enum JS_HUD_ChatEventFlags
@@ -411,6 +418,7 @@ void JS_HUD_RecordAssistInfo( int player, int assists );
 void JS_HUD_RecordTeamInfo( int player, const char *team_name, int teamnumber );
 void JS_HUD_RecordRadarPosition( int player, float x, float y, float z );
 void JS_HUD_RecordKillEvent( int killer, int victim, int headshot, const char *weapon, int assister, int rarityFlags );
+void JS_HUD_RecordHitEvent( int victim, int damage, int headshot, int victimHealth, int flags );
 void JS_HUD_RecordRoundTextEvent( int msg_dest, const char *raw_text, const char *resolved_text );
 void JS_HUD_RecordChatEvent( int player, int flags, const char *player_name, const char *text );
 void JS_HUD_RecordVoiceStatus( int entindex, int talking );

@@ -405,6 +405,7 @@ public:
 	CHudMsgFunc(TeamScore);
 	CHudMsgFunc(TeamNames);
 	CHudMsgFunc(DeathStats);
+	CHudMsgFunc(HitMarker);
 
 	int m_iPlayerNum;
 	int m_iNumTeams;

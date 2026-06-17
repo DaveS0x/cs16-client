@@ -91,6 +91,7 @@ static struct Column
 namespace
 {
 	const int DEATH_STATS_WIRE_VERSION = 1;
+	const int HIT_MARKER_WIRE_VERSION = 1;
 
 	int ClampDeathStatsValue( int value, int minValue, int maxValue )
 	{
@@ -149,6 +150,7 @@ int CHudScoreboard :: Init( void )
 	HOOK_MESSAGE( gHUD.m_Scoreboard, TeamScore );
 	HOOK_MESSAGE( gHUD.m_Scoreboard, TeamInfo );
 	HOOK_MESSAGE( gHUD.m_Scoreboard, DeathStats );
+	HOOK_MESSAGE( gHUD.m_Scoreboard, HitMarker );
 
 	InitHUDData();
 
@@ -692,6 +694,43 @@ int CHudScoreboard :: MsgFunc_DeathStats( const char *pszName, int iSize, void *
 		victimIds,
 		victimDamage,
 		victimHits
+	);
+
+	return 1;
+}
+
+// Real-time per-hit marker. The server unicasts this to the attacker only, so
+// this fires once per outgoing hit the local player lands. Feeds the JS HUD's
+// floating damage numbers + crosshair hitmarker. Wire format (see
+// SendHitMarker / RecordDamage in ReGameDLL):
+//		byte:  payload version (must be HIT_MARKER_WIRE_VERSION)
+//		byte:  victim entity index
+//		short: HP damage dealt this hit
+//		byte:  headshot (0/1)
+//		short: victim remaining HP (clamped >= 0)
+//		byte:  flags (bit0 = killing blow)
+int CHudScoreboard :: MsgFunc_HitMarker( const char *pszName, int iSize, void *pbuf )
+{
+	BufferReader reader( pszName, pbuf, iSize );
+
+	const int version = reader.ReadByte();
+	if( reader.Bad() || version != HIT_MARKER_WIRE_VERSION )
+		return 1;
+
+	const int victim = reader.ReadByte();
+	const int damage = reader.ReadShort();
+	const int headshot = reader.ReadByte();
+	const int victimHealth = reader.ReadShort();
+	const int flags = reader.ReadByte();
+	if( reader.Bad() )
+		return 1;
+
+	JS_HUD_RecordHitEvent(
+		ClampDeathStatsValue( victim, 0, JS_HUD_MAX_PLAYERS ),
+		ClampDeathStatsValue( damage, 0, 32767 ),
+		headshot ? 1 : 0,
+		ClampDeathStatsValue( victimHealth, 0, 32767 ),
+		flags
 	);
 
 	return 1;

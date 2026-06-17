@@ -1239,6 +1239,24 @@ extern "C" void DLLEXPORT JS_HUD_RecordKillEvent( int killer, int victim, int he
 	CopyFixedString( event->victim_name, sizeof(event->victim_name), PlayerNameOrFallback( victim, "Player" ) );
 }
 
+// Real-time outgoing-hit feedback for the local player. The server unicasts the
+// per-hit damage to us (the attacker) only, so every hit event recorded here is
+// by definition damage we dealt — no client-side filtering needed. Spare event
+// fields are reused (state = damage, assister_id = victim remaining HP,
+// rarity_flags = hit flags) so the JS_HUD_EventV1 layout/ABI is unchanged.
+extern "C" void DLLEXPORT JS_HUD_RecordHitEvent( int victim, int damage, int headshot, int victimHealth, int flags )
+{
+	g_DeathMsgCount++;
+	JS_HUD_EventV1 *event = PushEvent( JS_HUD_EVENT_HIT );
+	event->victim_id = victim;
+	event->victim_team = NormalizeMirrorPlayerTeam( victim );
+	event->state = damage;
+	event->assister_id = victimHealth;
+	event->headshot = headshot ? 1 : 0;
+	event->rarity_flags = flags;
+	CopyFixedString( event->victim_name, sizeof(event->victim_name), PlayerNameOrFallback( victim, "Player" ) );
+}
+
 extern "C" void DLLEXPORT JS_HUD_RecordRoundTextEvent( int msg_dest, const char *raw_text, const char *resolved_text )
 {
 	const int state = MatchRoundState( raw_text, resolved_text );
