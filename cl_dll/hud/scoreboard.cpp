@@ -151,6 +151,7 @@ int CHudScoreboard :: Init( void )
 	HOOK_MESSAGE( gHUD.m_Scoreboard, TeamInfo );
 	HOOK_MESSAGE( gHUD.m_Scoreboard, DeathStats );
 	HOOK_MESSAGE( gHUD.m_Scoreboard, HitMarker );
+	HOOK_MESSAGE( gHUD.m_Scoreboard, FfaBonus );
 
 	InitHUDData();
 
@@ -733,6 +734,20 @@ int CHudScoreboard :: MsgFunc_HitMarker( const char *pszName, int iSize, void *p
 		flags
 	);
 
+	return 1;
+}
+
+// CounterSol: FFA bonus weapon broadcast — byte weaponId + short secondsLeft
+int CHudScoreboard :: MsgFunc_FfaBonus( const char *pszName, int iSize, void *pbuf )
+{
+	BufferReader reader( pszName, pbuf, iSize );
+
+	const int weaponId = reader.ReadByte();
+	const int secondsLeft = reader.ReadShort();
+	if( reader.Bad() )
+		return 1;
+
+	JS_HUD_RecordFfaBonus( weaponId, secondsLeft );
 	return 1;
 }
 

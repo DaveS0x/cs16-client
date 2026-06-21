@@ -86,6 +86,31 @@ typedef struct JS_HUD_CrosshairStateV1
 	int32_t observer_target_id;
 } JS_HUD_CrosshairStateV1;
 
+// Field indices for the heap-free scalar crosshair getters below. These MUST
+// stay in sync with the bridge (hud-overlay/src/lib/wasmBridge.ts).
+enum JS_HUD_CrosshairIntField
+{
+	JS_HUD_CROSSHAIR_INT_FLAGS           = 0,
+	JS_HUD_CROSSHAIR_INT_WEAPON_ID       = 1,
+	JS_HUD_CROSSHAIR_INT_FOV             = 2,
+	JS_HUD_CROSSHAIR_INT_SHOTS_FIRED     = 3,
+	JS_HUD_CROSSHAIR_INT_PLAYER_FLAGS    = 4,
+	JS_HUD_CROSSHAIR_INT_WEAPON_FLAGS    = 5,
+	JS_HUD_CROSSHAIR_INT_OBSERVER_MODE   = 6,
+	JS_HUD_CROSSHAIR_INT_OBSERVER_TARGET = 7,
+	JS_HUD_CROSSHAIR_INT_TICK            = 8,
+	JS_HUD_CROSSHAIR_INT_ABI_VERSION     = 9,
+};
+
+enum JS_HUD_CrosshairFloatField
+{
+	JS_HUD_CROSSHAIR_FLOAT_BASE_GAP     = 0,
+	JS_HUD_CROSSHAIR_FLOAT_MOVEMENT_GAP = 1,
+	JS_HUD_CROSSHAIR_FLOAT_RECOIL_GAP   = 2,
+	JS_HUD_CROSSHAIR_FLOAT_SPREAD_DELTA = 3,
+	JS_HUD_CROSSHAIR_FLOAT_PLAYER_SPEED = 4,
+};
+
 enum JS_HUD_PlayerFlags
 {
 	JS_HUD_PLAYER_FLAG_LOCAL        = 1u << 0,
@@ -391,9 +416,18 @@ int JS_HUD_GetReserve( void );
 int JS_HUD_GetMoney( void );
 int JS_HUD_GetHealthArmor( void ); // lower 16 bits = health, upper 16 bits = armor
 int JS_HUD_GetFlags( void );
+int JS_HUD_GetFfaBonusWeapon( void );      // CounterSol: current FFA bonus WeaponIdType (0 = none)
+int JS_HUD_GetFfaBonusSecondsLeft( void ); // CounterSol: seconds until the FFA bonus rotates
 uint32_t JS_HUD_GetCrosshairStateSize( void );
 int JS_HUD_GetCrosshairState( JS_HUD_CrosshairStateV1 *out );
 const JS_HUD_CrosshairStateV1 *JS_HUD_GetCrosshairStatePtr( void );
+// Heap-free scalar crosshair accessors, for runtimes where Module.HEAPU8 is not
+// readable from the overlay. Call JS_HUD_BuildCrosshairState() once per frame,
+// then read fields via the Int/Float getters (see JS_HUD_CrosshairIntField /
+// JS_HUD_CrosshairFloatField). Mirrors the roster scalar accessor pattern.
+int JS_HUD_BuildCrosshairState( void );
+int JS_HUD_GetCrosshairInt( int field );
+float JS_HUD_GetCrosshairFloat( int field );
 uint32_t JS_HUD_GetRosterSnapshotSize( void );
 int JS_HUD_GetRosterSnapshot( JS_HUD_RosterSnapshotV1 *out );
 const JS_HUD_RosterSnapshotV1 *JS_HUD_GetRosterSnapshotPtr( void );
@@ -419,6 +453,7 @@ void JS_HUD_RecordTeamInfo( int player, const char *team_name, int teamnumber );
 void JS_HUD_RecordRadarPosition( int player, float x, float y, float z );
 void JS_HUD_RecordKillEvent( int killer, int victim, int headshot, const char *weapon, int assister, int rarityFlags );
 void JS_HUD_RecordHitEvent( int victim, int damage, int headshot, int victimHealth, int flags );
+void JS_HUD_RecordFfaBonus( int weaponId, int secondsLeft ); // CounterSol
 void JS_HUD_RecordRoundTextEvent( int msg_dest, const char *raw_text, const char *resolved_text );
 void JS_HUD_RecordChatEvent( int player, int flags, const char *player_name, const char *text );
 void JS_HUD_RecordVoiceStatus( int entindex, int talking );

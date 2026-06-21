@@ -70,6 +70,10 @@ namespace
 	uint32_t g_RoundMsgCount = 0;
 	int g_VoiceStatusState[JS_HUD_MAX_PLAYERS + 1];
 
+	// CounterSol: FFA bonus weapon state (set by JS_HUD_RecordFfaBonus from the FfaBonus message)
+	int g_FfaBonusWeaponId = 0;
+	float g_FfaBonusExpiry = 0.0f;
+
 	inline int Clamp( int value, int minValue, int maxValue )
 	{
 		if( value < minValue )
@@ -677,6 +681,27 @@ extern "C" int DLLEXPORT JS_HUD_GetHealthArmor( void )
 	return ((armor & 0xFFFF) << 16) | (health & 0xFFFF);
 }
 
+// CounterSol: FFA bonus weapon scalars. RecordFfaBonus stores an expiry off the live HUD
+// clock so the getter yields a smooth countdown at the HUD poll rate without per-second server ticks.
+extern "C" void DLLEXPORT JS_HUD_RecordFfaBonus( int weaponId, int secondsLeft )
+{
+	g_FfaBonusWeaponId = Clamp( weaponId, 0, MAX_WEAPONS - 1 );
+	g_FfaBonusExpiry = gHUD.m_flTime + (float)Clamp( secondsLeft, 0, 600 );
+}
+
+extern "C" int DLLEXPORT JS_HUD_GetFfaBonusWeapon( void )
+{
+	return g_FfaBonusWeaponId;
+}
+
+extern "C" int DLLEXPORT JS_HUD_GetFfaBonusSecondsLeft( void )
+{
+	float remaining = g_FfaBonusExpiry - gHUD.m_flTime;
+	if( remaining < 0.0f )
+		remaining = 0.0f;
+	return Clamp( (int)(remaining + 0.999f), 0, 600 ); // ceil without <math.h>
+}
+
 extern "C" int DLLEXPORT JS_HUD_GetFlags( void )
 {
 	int weaponId = 0;
@@ -766,6 +791,47 @@ extern "C" int DLLEXPORT JS_HUD_GetCrosshairState( JS_HUD_CrosshairStateV1 *out 
 extern "C" const JS_HUD_CrosshairStateV1 *DLLEXPORT JS_HUD_GetCrosshairStatePtr( void )
 {
 	return JS_HUD_GetCrosshairState( &g_StaticCrosshairState ) ? &g_StaticCrosshairState : nullptr;
+}
+
+// Heap-free scalar crosshair accessors. Build once per frame into the static
+// state, then read individual fields — no Module.HEAPU8 read required, so this
+// works on runtimes where the overlay cannot see the WASM heap.
+extern "C" int DLLEXPORT JS_HUD_BuildCrosshairState( void )
+{
+	return JS_HUD_GetCrosshairState( &g_StaticCrosshairState );
+}
+
+extern "C" int DLLEXPORT JS_HUD_GetCrosshairInt( int field )
+{
+	const JS_HUD_CrosshairStateV1 &s = g_StaticCrosshairState;
+	switch( field )
+	{
+	case JS_HUD_CROSSHAIR_INT_FLAGS:           return (int)s.flags;
+	case JS_HUD_CROSSHAIR_INT_WEAPON_ID:       return s.weapon_id;
+	case JS_HUD_CROSSHAIR_INT_FOV:             return s.fov;
+	case JS_HUD_CROSSHAIR_INT_SHOTS_FIRED:     return s.shots_fired;
+	case JS_HUD_CROSSHAIR_INT_PLAYER_FLAGS:    return s.player_flags;
+	case JS_HUD_CROSSHAIR_INT_WEAPON_FLAGS:    return s.weapon_flags;
+	case JS_HUD_CROSSHAIR_INT_OBSERVER_MODE:   return s.observer_mode;
+	case JS_HUD_CROSSHAIR_INT_OBSERVER_TARGET: return s.observer_target_id;
+	case JS_HUD_CROSSHAIR_INT_TICK:            return (int)s.tick;
+	case JS_HUD_CROSSHAIR_INT_ABI_VERSION:     return (int)s.abi_version;
+	default:                                   return 0;
+	}
+}
+
+extern "C" float DLLEXPORT JS_HUD_GetCrosshairFloat( int field )
+{
+	const JS_HUD_CrosshairStateV1 &s = g_StaticCrosshairState;
+	switch( field )
+	{
+	case JS_HUD_CROSSHAIR_FLOAT_BASE_GAP:     return s.base_gap;
+	case JS_HUD_CROSSHAIR_FLOAT_MOVEMENT_GAP: return s.movement_gap;
+	case JS_HUD_CROSSHAIR_FLOAT_RECOIL_GAP:   return s.recoil_gap;
+	case JS_HUD_CROSSHAIR_FLOAT_SPREAD_DELTA: return s.spread_delta;
+	case JS_HUD_CROSSHAIR_FLOAT_PLAYER_SPEED: return s.player_speed;
+	default:                                  return 0.0f;
+	}
 }
 
 extern "C" int DLLEXPORT JS_HUD_BuildObserverPov( void )
