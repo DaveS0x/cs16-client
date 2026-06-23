@@ -217,13 +217,12 @@ int CHudTextMessage::MsgFunc_TextMsg( const char *pszName, int iSize, void *pbuf
 		snprintf( psz, MAX_TEXTMSG_STRING, msg_text, szBuf[1], szBuf[2], szBuf[3], szBuf[4] );
 
 		ConvertCRtoNL( psz );
+		// CounterSol: the React HUD renders its own center-screen notifications
+		// from the captured event ring below, so suppress the engine's native
+		// center text (DrawConsoleString + CenterPrint) and stop the vanilla
+		// orange labels (e.g. "X picked up the bomb", round-win text) from drawing
+		// over the custom HUD. The event capture must stay so the HUD still sees them.
 		JS_HUD_RecordRoundTextEvent( msg_dest, raw_msg_text, psz );
-
-		int len = DrawUtils::ConsoleStringLen( psz );
-
-		DrawUtils::DrawConsoleString( (ScreenWidth - len) / 2, ScreenHeight / 3, psz );
-
-		CenterPrint( psz );
 		break;
 	}
 	case HUD_PRINTNOTIFY:
