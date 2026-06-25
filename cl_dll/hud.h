@@ -846,6 +846,12 @@ public:
 	int Draw( float flTime );
 	void Reset( void );
 
+	// CounterSol: read-only accessors so the JS_HUD bridge can mirror the
+	// plant/defuse progress bar into the React overlay (the native bar is not
+	// drawn in the browser build).
+	inline int CounterSolBarDuration( void ) const { return m_iDuration; }
+	inline float CounterSolBarStartTime( void ) const { return m_fStartTime; }
+
 	// start progress bar
 	// [short] Duration
 	CHudMsgFunc(BarTime);

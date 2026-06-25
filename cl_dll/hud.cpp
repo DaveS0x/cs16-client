@@ -314,6 +314,12 @@ void CHud :: Init( void )
 	cl_minmodels = CVAR_CREATE( "cl_minmodels", "0", FCVAR_ARCHIVE );
 	cl_min_t     = CVAR_CREATE( "cl_min_t", "1", FCVAR_ARCHIVE );
 	cl_min_ct    = CVAR_CREATE( "cl_min_ct", "2", FCVAR_ARCHIVE );
+	// Teammate overhead markers (defuse) kill switch, read by js_hud_exports.cpp's
+	// TeamMarkersEnabled(). MUST be registered here in CHud::Init (the cmd/cvar
+	// pool is ready) and NEVER via a JS_HUD bridge export — the overlay bridge
+	// calls those very early in boot, before Cmd_Init, which crashes the client
+	// with "_Mem_Alloc: pool == NULL (cmd.c:638)".
+	CVAR_CREATE( "cl_teammarkers", "1", FCVAR_ARCHIVE );
 	default_fov  = CVAR_CREATE( "default_fov", "90", 0 );
 	m_pCvarDraw  = CVAR_CREATE( "hud_draw", "1", FCVAR_ARCHIVE );
 	fastsprites  = CVAR_CREATE( "fastsprites", "0", FCVAR_ARCHIVE );

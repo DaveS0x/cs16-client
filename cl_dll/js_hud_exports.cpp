@@ -1,4 +1,6 @@
 #include "hud.h"
+#include "cl_util.h"
+#include "triangleapi.h"
 #include "ammohistory.h"
 #include "com_weapons.h"
 #include "hud/radar.h"
@@ -11,8 +13,8 @@
 
 static_assert(sizeof(JS_HUD_SnapshotV1) == 76, "JS_HUD_SnapshotV1 layout changed");
 static_assert(sizeof(JS_HUD_CrosshairStateV1) == 64, "JS_HUD_CrosshairStateV1 layout changed");
-static_assert(sizeof(JS_HUD_PlayerRowV1) == 88, "JS_HUD_PlayerRowV1 layout changed");
-static_assert(sizeof(JS_HUD_RosterSnapshotV1) == 2864, "JS_HUD_RosterSnapshotV1 layout changed");
+static_assert(sizeof(JS_HUD_PlayerRowV1) == 104, "JS_HUD_PlayerRowV1 layout changed");
+static_assert(sizeof(JS_HUD_RosterSnapshotV1) == 3376, "JS_HUD_RosterSnapshotV1 layout changed");
 static_assert(sizeof(JS_HUD_EventV1) == 360, "JS_HUD_EventV1 layout changed");
 static_assert(sizeof(JS_HUD_DebugCountersV1) == 40, "JS_HUD_DebugCountersV1 layout changed");
 static_assert(sizeof(JS_HUD_DeathStatsRowV1) == 48, "JS_HUD_DeathStatsRowV1 layout changed");
@@ -368,6 +370,155 @@ namespace
 		valid = true;
 	}
 
+	// --- C4 plant/defuse progress + bomb radar (Phase 2, client-only) --------
+	// The engine already tracks both natively but the browser build does not
+	// draw the native progress bar / radar, so we surface the raw state to the
+	// React overlay: CHudProgressBar (fed by the BarTime/BarTime2 messages) for
+	// the local player's plant/defuse, and g_PlayerExtraInfo[33] (maintained by
+	// radar.cpp's BombDrop/BombPickup hooks) for the dropped/planted C4 position.
+
+	// True when the LOCAL player is actively planting/defusing; fills kind
+	// (1 plant / 2 defuse), progress 0..1, remaining seconds, and the kit flag.
+	inline bool ComputeBombAction( int &kind, float &progress, float &remaining, int &hasKit )
+	{
+		kind = 0; progress = 0.0f; remaining = 0.0f; hasKit = 0;
+
+		const int dur = gHUD.m_ProgressBar.CounterSolBarDuration();
+		if( dur <= 0 )
+			return false; // no active bar
+
+		const float start = gHUD.m_ProgressBar.CounterSolBarStartTime();
+		float elapsed = gHUD.m_flTime - start;
+		if( elapsed < 0.0f ) elapsed = 0.0f;
+		if( elapsed >= (float)dur )
+			return false; // action finished / expired
+
+		progress = elapsed / (float)dur;
+		if( progress > 1.0f ) progress = 1.0f;
+		remaining = (float)dur - elapsed;
+
+		// Only Ts plant, only CTs defuse — derive the kind from the local team,
+		// falling back to the planted state when the team is unknown.
+		const int idx = gHUD.m_Scoreboard.m_iPlayerNum;
+		const int team = ( idx > 0 && idx <= MAX_PLAYERS ) ? g_PlayerExtraInfo[idx].teamnumber : 0;
+		if( team == TEAM_CT )              kind = 2; // defuse
+		else if( team == TEAM_TERRORIST )  kind = 1; // plant
+		else                               kind = ( GetBombState() == 2 ) ? 2 : 1;
+
+		hasKit = ( idx > 0 && idx <= MAX_PLAYERS && g_PlayerExtraInfo[idx].has_defuse_kit ) ? 1 : 0;
+		return true;
+	}
+
+	// Like BuildRadarPoint but WITHOUT the rim clamp, so the overlay can draw an
+	// off-radar edge arrow toward the C4 (|x|>1 or |y|>1) the way stock CS does.
+	inline void BuildBombRadarPoint( const Vector &origin, float &radarX, float &radarY )
+	{
+		radarX = 0.0f; radarY = 0.0f;
+		if( !OriginHasSignal( origin ) || !OriginHasSignal( gHUD.m_vecOrigin ) )
+			return;
+
+		float dx = origin.x - gHUD.m_vecOrigin.x;
+		float dy = origin.y - gHUD.m_vecOrigin.y;
+		if( dx == 0.0f ) dx = 0.00001f;
+		if( dy == 0.0f ) dy = 0.00001f;
+
+		const float radarScale = 32.0f;
+		const float radarRadius = 64.0f;
+		const float distance = sqrtf( dx * dx + dy * dy );
+		const float radius = distance / radarScale; // unclamped (edge-arrow capable)
+		const float pi = 3.14159265358979323846f;
+		const float offset = (float)( ( gHUD.m_vecAngles.y - ( atan2f( dy, dx ) * 180.0f / pi ) ) * pi / 180.0f );
+
+		radarX = sinf( offset ) * radius / radarRadius;
+		radarY = -cosf( offset ) * radius / radarRadius;
+	}
+
+	// Runtime kill switch for the teammate head markers. `cl_teammarkers 0`
+	// disables all native projection (no MARKER_VALID flags) without a rebuild.
+	// READ-ONLY here — never CVAR_CREATE. This runs in the per-frame roster
+	// snapshot, which the overlay bridge probes very early (before the engine's
+	// cmd/cvar pool is ready); a lazy registration here crashed the client with
+	// "_Mem_Alloc: pool == NULL (cmd.c:638)". The cvar is registered once at init
+	// in JS_HUD_GetABIVersion; markers default ON until that has run.
+	inline bool TeamMarkersEnabled()
+	{
+		static cvar_t *cv = nullptr;
+		if( !cv )
+			cv = gEngfuncs.pfnGetCvarPointer( "cl_teammarkers" );
+		return !cv || cv->value != 0.0f;
+	}
+
+	// --- Per-frame teammate markers ------------------------------------------
+	// The 20Hz roster caches which teammates qualify (entity index + team + a
+	// fallback origin); JS_HUD_BuildTeammateMarkers() re-projects them EVERY frame
+	// (on the overlay's requestAnimationFrame path) using the live entity origin
+	// where available and the CURRENT camera matrix, so markers track the view
+	// smoothly instead of lagging at the 20Hz roster rate. Projection mirrors
+	// hud_spectator.cpp's WorldToScreen -> XPROJECT/YPROJECT idiom — the overlay
+	// never rebuilds the camera matrix, so there is no FOV/aspect/view-angle drift.
+	struct MarkerCacheEntry { int entIndex; int team; Vector fallbackOrigin; };
+	static MarkerCacheEntry g_MarkerCache[ 33 ];
+	static int g_MarkerCacheCount = 0;
+
+	struct ProjectedMarker { int id; int team; uint32_t flags; float screen_x; float screen_y; float distance; float bearing; };
+	static ProjectedMarker g_ProjectedMarkers[ 33 ];
+	static int g_ProjectedMarkerCount = 0;
+	static const float MARKER_FORWARD_OFFSET = 7.0f; // push anchor forward along facing, between the spine (0) and the head (14)
+	static const float MARKER_MIN_DISTANCE = 48.0f; // hide markers for teammates right on the camera (e.g. the in-eye spectated target, whose head projects degenerate/jumpy)
+	static const int MARKER_STALE_TOLERANCE = 3; // skip teammates not updated within the last few server frames (kills the frozen-marker bug without flickering visible teammates)
+
+	inline void ProjectMarkerEntry( const Vector &origin, bool ducking, int id, int team, ProjectedMarker &m )
+	{
+		m.id = id;
+		m.team = team;
+		m.flags = JS_HUD_PLAYER_FLAG_MARKER_VALID;
+		m.screen_x = 0.0f;
+		m.screen_y = 0.0f;
+		m.distance = 0.0f;
+		m.bearing = 0.0f;
+		if( !gEngfuncs.pTriAPI )
+			return;
+
+		Vector head = origin;
+		// Top-of-head. The crouch hull tops out at +18, but the ducked player
+		// MODEL's head pokes well above the box, so +18 lands on the chest —
+		// raise it to sit on the helmet like the standing case does.
+		head.z += ducking ? 28.0f : 36.0f;
+
+		float ndc[3] = { 0.0f, 0.0f, 0.0f };
+		// WorldToScreen returns nonzero when the point is z-clipped (behind camera).
+		const int behind = gEngfuncs.pTriAPI->WorldToScreen( (float *)&head, ndc );
+
+		const float sw = (float)gHUD.m_scrinfo.iWidth;
+		const float sh = (float)gHUD.m_scrinfo.iHeight;
+		const float sx = ( 1.0f + ndc[0] ) * sw * 0.5f; // == XPROJECT(ndc[0]), pixels
+		const float sy = ( 1.0f - ndc[1] ) * sh * 0.5f; // == YPROJECT(ndc[1]), pixels
+		m.screen_x = ( sw > 0.0f ) ? sx / sw : 0.0f; // normalized 0..1, DPR-independent
+		m.screen_y = ( sh > 0.0f ) ? sy / sh : 0.0f;
+
+		float dx = head.x - gHUD.m_vecOrigin.x;
+		float dy = head.y - gHUD.m_vecOrigin.y;
+		if( dx == 0.0f ) dx = 0.00001f;
+		if( dy == 0.0f ) dy = 0.00001f;
+		const float pi = 3.14159265358979323846f;
+		m.bearing = (float)( ( gHUD.m_vecAngles.y - ( atan2f( dy, dx ) * 180.0f / pi ) ) * pi / 180.0f );
+		m.distance = ( head - gHUD.m_vecOrigin ).Length();
+
+		// Teammate essentially on the camera (e.g. the in-eye spectated target,
+		// whose own head is right at the eye) projects to a degenerate, jumpy
+		// point — drop the marker entirely by clearing VALID.
+		if( m.distance < MARKER_MIN_DISTANCE )
+		{
+			m.flags = 0;
+			return;
+		}
+
+		if( behind )
+			m.flags |= JS_HUD_PLAYER_FLAG_MARKER_BEHIND;
+		else if( sx >= 0.0f && sx <= sw && sy >= 0.0f && sy <= sh )
+			m.flags |= JS_HUD_PLAYER_FLAG_MARKER_ONSCREEN;
+	}
+
 	inline int GetTeamScore( int uiTeam )
 	{
 		for( int i = 1; i <= MAX_TEAMS; i++ )
@@ -569,6 +720,9 @@ namespace
 
 extern "C" uint32_t DLLEXPORT JS_HUD_GetABIVersion( void )
 {
+	// NOTE: cl_teammarkers is registered in CHud::Init (hud.cpp), NOT here — the
+	// bridge calls this export too early in boot (before Cmd_Init) and any
+	// CVAR_CREATE on that path crashes on pool == NULL (cmd.c:638).
 	return JS_HUD_ABI_VERSION_1;
 }
 
@@ -834,6 +988,126 @@ extern "C" float DLLEXPORT JS_HUD_GetCrosshairFloat( int field )
 	}
 }
 
+// Per-frame teammate markers. Call once per requestAnimationFrame: re-projects the
+// teammates cached by the last roster snapshot using the LIVE entity origin (where
+// in PVS) and the CURRENT camera matrix, so the markers track the view smoothly.
+// Then read the count + per-slot Int/Float fields. Returns the projected count.
+extern "C" int DLLEXPORT JS_HUD_BuildTeammateMarkers( void )
+{
+	g_ProjectedMarkerCount = 0;
+	if( !TeamMarkersEnabled() )
+		return 0;
+	cl_entity_t *localEnt = gEngfuncs.GetLocalPlayer();
+	const int curMsg = localEnt ? localEnt->curstate.messagenum : 0;
+	for( int n = 0; n < g_MarkerCacheCount; n++ )
+	{
+		const MarkerCacheEntry &e = g_MarkerCache[n];
+		cl_entity_t *ent = gEngfuncs.GetEntityByIndex( e.entIndex );
+		// Require a recently-updated (in-PVS) player entity. Skipping stale/
+		// out-of-PVS teammates prevents a marker from FREEZING at a last-known
+		// position (the throttled fallback origin did exactly that). A small
+		// tolerance avoids flickering teammates that are visible but updated a
+		// frame or two ago.
+		if( !ent || !ent->player || ( curMsg - ent->curstate.messagenum ) > MARKER_STALE_TOLERANCE
+			|| !OriginHasSignal( ent->origin ) )
+			continue;
+
+		Vector origin = ent->origin;
+		// Push the anchor forward along the player's facing so the marker sits on
+		// the (forward-leaning) head model rather than the spine/origin.
+		const float yaw = ent->angles[1] * ( 3.14159265358979323846f / 180.0f );
+		origin.x += cosf( yaw ) * MARKER_FORWARD_OFFSET;
+		origin.y += sinf( yaw ) * MARKER_FORWARD_OFFSET;
+		const bool ducking = ( ent->curstate.usehull == 1 );
+
+		ProjectMarkerEntry( origin, ducking, e.entIndex, e.team, g_ProjectedMarkers[g_ProjectedMarkerCount] );
+		g_ProjectedMarkerCount++;
+	}
+	return g_ProjectedMarkerCount;
+}
+
+extern "C" int DLLEXPORT JS_HUD_GetTeammateMarkerCount( void )
+{
+	return g_ProjectedMarkerCount;
+}
+
+extern "C" int DLLEXPORT JS_HUD_GetTeammateMarkerInt( int slot, int field )
+{
+	if( slot < 0 || slot >= g_ProjectedMarkerCount )
+		return 0;
+	const ProjectedMarker &m = g_ProjectedMarkers[slot];
+	switch( field )
+	{
+	case JS_HUD_MARKER_ID:    return m.id;
+	case JS_HUD_MARKER_TEAM:  return m.team;
+	case JS_HUD_MARKER_FLAGS: return (int)m.flags;
+	default:                  return 0;
+	}
+}
+
+extern "C" float DLLEXPORT JS_HUD_GetTeammateMarkerFloat( int slot, int field )
+{
+	if( slot < 0 || slot >= g_ProjectedMarkerCount )
+		return 0.0f;
+	const ProjectedMarker &m = g_ProjectedMarkers[slot];
+	switch( field )
+	{
+	case JS_HUD_MARKER_SCREEN_X:  return m.screen_x;
+	case JS_HUD_MARKER_SCREEN_Y:  return m.screen_y;
+	case JS_HUD_MARKER_DISTANCE:  return m.distance;
+	case JS_HUD_MARKER_BEARING:   return m.bearing;
+	default:                      return 0.0f;
+	}
+}
+
+// --- C4 plant/defuse progress + bomb radar (Phase 2) -----------------------
+extern "C" int DLLEXPORT JS_HUD_GetBombActionKind( void )
+{
+	int kind, hasKit; float progress, remaining;
+	ComputeBombAction( kind, progress, remaining, hasKit );
+	return kind; // 0 none / 1 plant / 2 defuse
+}
+
+extern "C" float DLLEXPORT JS_HUD_GetBombActionProgress( void )
+{
+	int kind, hasKit; float progress, remaining;
+	if( !ComputeBombAction( kind, progress, remaining, hasKit ) ) return 0.0f;
+	return progress;
+}
+
+extern "C" float DLLEXPORT JS_HUD_GetBombActionRemainingSec( void )
+{
+	int kind, hasKit; float progress, remaining;
+	if( !ComputeBombAction( kind, progress, remaining, hasKit ) ) return 0.0f;
+	return remaining;
+}
+
+extern "C" int DLLEXPORT JS_HUD_GetBombActionHasKit( void )
+{
+	int kind, hasKit; float progress, remaining;
+	if( !ComputeBombAction( kind, progress, remaining, hasKit ) ) return 0;
+	return hasKit;
+}
+
+extern "C" int DLLEXPORT JS_HUD_GetBombRadarState( void )
+{
+	return GetBombState(); // 0 none / 1 dropped / 2 planted
+}
+
+extern "C" float DLLEXPORT JS_HUD_GetBombRadarX( void )
+{
+	if( GetBombState() == 0 ) return 0.0f;
+	float x, y; BuildBombRadarPoint( g_PlayerExtraInfo[33].origin, x, y );
+	return x;
+}
+
+extern "C" float DLLEXPORT JS_HUD_GetBombRadarY( void )
+{
+	if( GetBombState() == 0 ) return 0.0f;
+	float x, y; BuildBombRadarPoint( g_PlayerExtraInfo[33].origin, x, y );
+	return y;
+}
+
 extern "C" int DLLEXPORT JS_HUD_BuildObserverPov( void )
 {
 	memset( &g_StaticObserverPov, 0, sizeof(g_StaticObserverPov) );
@@ -927,6 +1201,8 @@ extern "C" int DLLEXPORT JS_HUD_GetRosterSnapshot( JS_HUD_RosterSnapshotV1 *out 
 	out->tick = GetHudTimeMs();
 	const int localPlayerId = GetLocalPlayerIndex();
 	out->local_player_id = localPlayerId;
+	const int localTeam = NormalizeMirrorPlayerTeam( localPlayerId );
+	g_MarkerCacheCount = 0; // rebuilt each snapshot; re-projected per-frame by JS_HUD_BuildTeammateMarkers
 	out->ct_score = GetTeamScore( 1 );
 	out->t_score = GetTeamScore( 2 );
 
@@ -982,6 +1258,20 @@ extern "C" int DLLEXPORT JS_HUD_GetRosterSnapshot( JS_HUD_RosterSnapshotV1 *out 
 		row.origin_z = origin.z;
 		row.radar_x = radarX;
 		row.radar_y = radarY;
+
+		// Cache qualifying teammates (entity index + team + a fallback radar
+		// origin) for the per-frame marker re-projection. JS_HUD_BuildTeammateMarkers
+		// re-projects these EVERY rAF frame (live entity origin + current camera) so
+		// the markers track the view smoothly; cl_teammarkers is the kill switch.
+		if( TeamMarkersEnabled() && !isLocal && isAlive && team != 0 && team == localTeam
+			&& g_MarkerCacheCount < (int)( sizeof( g_MarkerCache ) / sizeof( g_MarkerCache[0] ) ) )
+		{
+			g_MarkerCache[g_MarkerCacheCount].entIndex = i;
+			g_MarkerCache[g_MarkerCacheCount].team = team;
+			g_MarkerCache[g_MarkerCacheCount].fallbackOrigin = origin;
+			g_MarkerCacheCount++;
+		}
+
 		char fallbackName[16];
 		snprintf( fallbackName, sizeof(fallbackName), "P%d", i );
 		CopyFixedString( row.name, sizeof(row.name), hasName ? name : fallbackName );
@@ -1092,6 +1382,14 @@ extern "C" float DLLEXPORT JS_HUD_GetRosterPlayerFloat( int slot, int field )
 		return row.radar_x;
 	case JS_HUD_ROSTER_PLAYER_RADAR_Y:
 		return row.radar_y;
+	case JS_HUD_ROSTER_PLAYER_SCREEN_X:
+		return row.screen_x;
+	case JS_HUD_ROSTER_PLAYER_SCREEN_Y:
+		return row.screen_y;
+	case JS_HUD_ROSTER_PLAYER_MARKER_DIST:
+		return row.marker_distance;
+	case JS_HUD_ROSTER_PLAYER_MARKER_BEARING:
+		return row.marker_bearing;
 	default:
 		return 0.0f;
 	}

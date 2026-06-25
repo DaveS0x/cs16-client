@@ -2,7 +2,7 @@
 
 #include <stdint.h>
 
-#define JS_HUD_ABI_VERSION_1 0x00010009u
+#define JS_HUD_ABI_VERSION_1 0x0001000Au
 #define JS_HUD_MAX_PLAYERS 32
 #define JS_HUD_PLAYER_NAME_BYTES 32
 #define JS_HUD_MAX_EVENTS 32
@@ -118,6 +118,13 @@ enum JS_HUD_PlayerFlags
 	JS_HUD_PLAYER_FLAG_VALID_ORIGIN = 1u << 2,
 	JS_HUD_PLAYER_FLAG_VALID_RADAR  = 1u << 3,
 	JS_HUD_PLAYER_FLAG_VALID_HEALTH = 1u << 4,
+	// Teammate head-marker (inverted triangle) projection state. Computed
+	// natively in JS_HUD_GetRosterSnapshot via pTriAPI->WorldToScreen so the
+	// overlay never has to reconstruct the camera matrix. Gated by the
+	// cl_teammarkers cvar (kill switch) and the React HUD (defuse only).
+	JS_HUD_PLAYER_FLAG_MARKER_VALID    = 1u << 5, // alive non-local same-team: marker fields valid
+	JS_HUD_PLAYER_FLAG_MARKER_ONSCREEN = 1u << 6, // head is in front of camera AND within screen bounds
+	JS_HUD_PLAYER_FLAG_MARKER_BEHIND   = 1u << 7, // head is behind the camera (use bearing for edge arrow)
 };
 
 typedef struct JS_HUD_PlayerRowV1
@@ -137,6 +144,10 @@ typedef struct JS_HUD_PlayerRowV1
 	float radar_y;
 	char name[JS_HUD_PLAYER_NAME_BYTES];
 	int32_t assists;
+	float screen_x;         // head projected to normalized screen x (0..1, 0=left), valid when MARKER_VALID
+	float screen_y;         // head projected to normalized screen y (0..1, 0=top)
+	float marker_distance;  // distance from camera to head, world units
+	float marker_bearing;   // horizontal direction to head relative to view yaw, radians (for off-screen edge arrow)
 } JS_HUD_PlayerRowV1;
 
 typedef struct JS_HUD_RosterSnapshotV1
@@ -353,6 +364,29 @@ enum JS_HUD_RosterPlayerFloatField
 	JS_HUD_ROSTER_PLAYER_ORIGIN_Z,
 	JS_HUD_ROSTER_PLAYER_RADAR_X,
 	JS_HUD_ROSTER_PLAYER_RADAR_Y,
+	JS_HUD_ROSTER_PLAYER_SCREEN_X,
+	JS_HUD_ROSTER_PLAYER_SCREEN_Y,
+	JS_HUD_ROSTER_PLAYER_MARKER_DIST,
+	JS_HUD_ROSTER_PLAYER_MARKER_BEARING,
+};
+
+// Per-frame teammate-marker accessors. The 20Hz roster caches which teammates
+// qualify; JS_HUD_BuildTeammateMarkers re-projects them EVERY frame (called on
+// the overlay's requestAnimationFrame path) so the markers track the camera
+// smoothly instead of lagging at the roster rate.
+enum JS_HUD_MarkerIntField
+{
+	JS_HUD_MARKER_ID = 0,
+	JS_HUD_MARKER_TEAM,
+	JS_HUD_MARKER_FLAGS, // JS_HUD_PLAYER_FLAG_MARKER_VALID/ONSCREEN/BEHIND
+};
+
+enum JS_HUD_MarkerFloatField
+{
+	JS_HUD_MARKER_SCREEN_X = 0,
+	JS_HUD_MARKER_SCREEN_Y,
+	JS_HUD_MARKER_DISTANCE,
+	JS_HUD_MARKER_BEARING,
 };
 
 enum JS_HUD_EventMetaField
@@ -436,6 +470,13 @@ int JS_HUD_GetRosterMeta( int field );
 int JS_HUD_GetRosterPlayerInt( int slot, int field );
 float JS_HUD_GetRosterPlayerFloat( int slot, int field );
 uint32_t JS_HUD_GetRosterPlayerNamePacked( int slot, int chunk );
+// Per-frame teammate markers: call BuildTeammateMarkers() once per rAF frame to
+// re-project the cached teammate origins with the CURRENT camera, then read the
+// count + per-slot fields (smooth camera tracking, no 20Hz roster lag).
+int JS_HUD_BuildTeammateMarkers( void );
+int JS_HUD_GetTeammateMarkerCount( void );
+int JS_HUD_GetTeammateMarkerInt( int slot, int field );
+float JS_HUD_GetTeammateMarkerFloat( int slot, int field );
 int JS_HUD_BuildObserverPov( void );
 int JS_HUD_GetObserverPovInt( int field );
 uint32_t JS_HUD_GetEventBufferSize( void );
