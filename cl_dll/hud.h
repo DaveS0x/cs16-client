@@ -851,6 +851,10 @@ public:
 	// drawn in the browser build).
 	inline int CounterSolBarDuration( void ) const { return m_iDuration; }
 	inline float CounterSolBarStartTime( void ) const { return m_fStartTime; }
+	// Engine-clock start time: the browser overlay suppresses native HUD redraw,
+	// so gHUD.m_flTime (used by m_fStartTime) stalls. Mirror the start in the
+	// always-advancing engine clock so the React progress bar fills correctly.
+	inline float CounterSolBarStartEngineTime( void ) const { return m_flBarStartEngineTime; }
 
 	// start progress bar
 	// [short] Duration
@@ -865,6 +869,7 @@ private:
 	int m_iDuration;
 	float m_fPercent;
 	float m_fStartTime;
+	float m_flBarStartEngineTime;
 	char m_szHeader[256];
 	const char *m_szLocalizedHeader;
 };

@@ -387,8 +387,11 @@ namespace
 		if( dur <= 0 )
 			return false; // no active bar
 
-		const float start = gHUD.m_ProgressBar.CounterSolBarStartTime();
-		float elapsed = gHUD.m_flTime - start;
+		// Measure in the engine-clock domain: the overlay suppresses native HUD
+		// redraw, which stalls gHUD.m_flTime, so a m_flTime-based elapsed freezes
+		// at ~0 and the bar never fills (mirrors the round-timer workaround above).
+		const float start = gHUD.m_ProgressBar.CounterSolBarStartEngineTime();
+		float elapsed = gEngfuncs.GetClientTime() - start;
 		if( elapsed < 0.0f ) elapsed = 0.0f;
 		if( elapsed >= (float)dur )
 			return false; // action finished / expired

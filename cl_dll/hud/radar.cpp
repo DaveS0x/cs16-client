@@ -46,11 +46,14 @@ static int g_iCounterSolBombDurationSec = 0;
 
 static float CounterSol_HudNow( void )
 {
-	const float hudNow = gHUD.m_flTime;
+	// Always use the engine clock. The browser overlay suppresses native HUD
+	// redraw, so gHUD.m_flTime stalls and lags engine time by up to the old 2.0f
+	// tolerance — which made the C4 countdown land ~2s high (showing 00:02) at
+	// detonation. Engine time keeps advancing and seeds/counts down consistently.
 	const float engineNow = gEngfuncs.GetClientTime();
-	if( hudNow > 0.0f && fabsf( hudNow - engineNow ) < 2.0f )
-		return hudNow;
-	return engineNow;
+	if( engineNow > 0.0f )
+		return engineNow;
+	return gHUD.m_flTime;
 }
 
 static void CounterSol_ClearBombTimer( void )

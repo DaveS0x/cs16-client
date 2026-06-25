@@ -156,6 +156,7 @@ void CHudProgressBar::Reset( void )
 	m_szLocalizedHeader = NULL;
 	m_szHeader[0] = '\0';
 	m_fStartTime = m_fPercent = 0.0f;
+	m_flBarStartEngineTime = 0.0f;
 }
 
 int CHudProgressBar::Draw( float flTime )
@@ -205,6 +206,9 @@ int CHudProgressBar::MsgFunc_BarTime(const char *pszName, int iSize, void *pbuf)
 	m_fPercent = 0.0f;
 
 	m_fStartTime = gHUD.m_flTime;
+	// Engine clock keeps advancing even when the browser overlay suppresses HUD
+	// redraw (which stalls gHUD.m_flTime), so the React bar reads from this.
+	m_flBarStartEngineTime = gEngfuncs.GetClientTime();
 
 	m_iFlags = HUD_DRAW;
 	return 1;
@@ -215,9 +219,13 @@ int CHudProgressBar::MsgFunc_BarTime2(const char *pszName, int iSize, void *pbuf
 	BufferReader reader( pszName, pbuf, iSize );
 
 	m_iDuration = reader.ReadShort();
-	m_fPercent = m_iDuration * (float)reader.ReadShort() / 100.0f;
+	const float fraction = (float)reader.ReadShort() / 100.0f;
+	m_fPercent = m_iDuration * fraction;
 
 	m_fStartTime = gHUD.m_flTime;
+	// Resume offset: the bar is already `fraction` along, so back-date the engine
+	// start so the overlay resumes at the correct fill instead of restarting at 0.
+	m_flBarStartEngineTime = gEngfuncs.GetClientTime() - fraction * (float)m_iDuration;
 
 	m_iFlags = HUD_DRAW;
 	return 1;
