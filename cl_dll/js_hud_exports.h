@@ -484,6 +484,7 @@ int JS_HUD_GetEvents( uint32_t after_seq, JS_HUD_EventBufferV1 *out );
 const JS_HUD_EventBufferV1 *JS_HUD_GetEventsPtr( uint32_t after_seq );
 int JS_HUD_BuildEvents( uint32_t after_seq );
 int JS_HUD_GetEventMeta( int field );
+uint32_t JS_HUD_GetLatestEventSeq( void );  // live ring seq; lets the overlay skip BuildEvents when idle (additive, ABI unchanged)
 int JS_HUD_GetEventInt( int slot, int field );
 uint32_t JS_HUD_GetEventTextPacked( int slot, int text_field, int chunk );
 void JS_HUD_ResetEvents( void );

@@ -1464,6 +1464,14 @@ extern "C" int DLLEXPORT JS_HUD_GetEventMeta( int field )
 	}
 }
 
+// Live ring sequence, independent of the static buffer: unlike GetEventMeta this
+// does not require a prior JS_HUD_BuildEvents, so the overlay can poll it every
+// frame and skip the whole buffer rebuild (memset + ring copy) while idle.
+extern "C" uint32_t DLLEXPORT JS_HUD_GetLatestEventSeq( void )
+{
+	return g_NextEventSeq > 1 ? g_NextEventSeq - 1 : 0;
+}
+
 extern "C" int DLLEXPORT JS_HUD_GetEventInt( int slot, int field )
 {
 	if( slot < 0 || slot >= JS_HUD_MAX_EVENTS )
